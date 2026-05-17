@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Habits">
+<title>Habit Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{background:#0a0a0a;}
+::-webkit-scrollbar{display:none;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+@keyframes slidein{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+</style>
+</head>
+<body><div id="root"></div>
+<script type="text/babel">
+const { useState } = React;
+
+const NTFY="elijah-tarjm-x7k2m9";
+const BG="#0a0a0a",S="#111",BD="#1a1a1a",T="#f0f0f0",M="#666",G="#444";
+
+const CATS=[
+  {id:"skate",   name:"Skating",  color:"#c8ff00"},
+  {id:"gym",     name:"Gym",      color:"#ffaa00"},
+  {id:"recovery",name:"Recovery", color:"#44ff88"},
+  {id:"looks",   name:"Looks",    color:"#00cfff"},
+  {id:"mind",    name:"Mind",     color:"#ff4488"},
+];
+const RINGS=[
+  {cat:"skate",   color:"#c8ff00",r:90,circ:565},
+  {cat:"gym",     color:"#ffaa00",r:72,circ:452},
+  {cat:"recovery",color:"#44ff88",r:54,circ:339},
+  {cat:"looks",   color:"#00cfff",r:36,circ:226},
+  {cat:"mind",    color:"#ff4488",r:18,circ:113},
+];
+
+// All habits stored in localStorage so every one is editable/deletable
+const DEFAULT_HABITS=[
+  {id:"skate_sess", name:"Skate Session",    cat:"skate",   icon:"🛹"},
+  {id:"skate_train",name:"Skate Training",   cat:"skate",   icon:"⚡"},
+  {id:"tricks",     name:"Trick Practice",   cat:"skate",   icon:"🎯"},
+  {id:"stretch",    name:"Stretch Protocol", cat:"skate",   icon:"🧘"},
+  {id:"gym_sess",   name:"Gym Session",      cat:"gym",     icon:"🏋️"},
+  {id:"ab",         name:"Ab Circuit",       cat:"gym",     icon:"🔥"},
+  {id:"pf",         name:"PF Protocol",      cat:"gym",     icon:"🩺"},
+  {id:"supps",      name:"Supplements",      cat:"recovery",icon:"💊"},
+  {id:"creatine",   name:"Creatine",         cat:"recovery",icon:"💪"},
+  {id:"mag",        name:"Magnesium",        cat:"recovery",icon:"🌙"},
+  {id:"water",      name:"Water (2L+)",      cat:"recovery",icon:"💧"},
+  {id:"deficit",    name:"Cal Deficit",      cat:"recovery",icon:"🥗"},
+  {id:"reta",       name:"Reta Injection",   cat:"recovery",icon:"💉",thu:true},
+  {id:"skin",       name:"Night Skincare",   cat:"looks",   icon:"🌑"},
+  {id:"redlight",   name:"Red Light",        cat:"looks",   icon:"🔴"},
+  {id:"teeth",      name:"Brush Teeth",      cat:"looks",   icon:"🦷"},
+  {id:"sun",        name:"Sunlight",         cat:"looks",   icon:"🌅"},
+  {id:"noporn",     name:"No Porn",          cat:"mind",    icon:"🧠",critical:true},
+  {id:"breathe",    name:"Box Breathing",    cat:"mind",    icon:"💨"},
+  {id:"gratitude",  name:"Gratitude",        cat:"mind",    icon:"✨"},
+  {id:"nosmoke",    name:"No Smoking",       cat:"mind",    icon:"🚭"},
+  {id:"cleanroom",  name:"Clean Room",       cat:"mind",    icon:"🧹"},
+];
+
+const MOOD_SCALE=["","😴","😕","😐","🙂","🔥"];
+
+const ld=(k)=>{try{return JSON.parse(localStorage.getItem(k));}catch{return null;}};
+const sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
+const ldDay=(d)=>ld("h:"+d)||{};
+const svDay=(d,v)=>sv("h:"+d,v);
+const ldMood=(d)=>ld("m:"+d)||{};
+const svMood=(d,v)=>sv("m:"+d,v);
+
+function loadAllHabits(){
+  const saved=ld("all_habits");
+  if(saved&&saved.length)return saved;
+  sv("all_habits",DEFAULT_HABITS);
+  return DEFAULT_HABITS;
+}
+function saveAllHabits(h){sv("all_habits",h);}
+
+function todayStr(){return new Date().toISOString().slice(0,10);}
+function isThu(){return new Date().getDay()===4;}
+function dayOfWeek(s){return new Date(s+"T12:00:00").getDay();}
+function daysInMonth(y,m){return new Date(y,m+1,0).getDate();}
+function dayStr(y,m,d){return y+"-"+String(m+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");}
+
+function dayPct(dateStr,habits){
+  const data=ldDay(dateStr);
+  const dow=dayOfWeek(dateStr);
+  const active=habits.filter(h=>!h.thu||(h.thu&&dow===4));
+  if(!active.length)return null;
+  return active.filter(h=>data[h.id]).length/active.length;
+}
+function pctColor(p){
+  if(p===null||p===undefined)return"#1a1a1a";
+  if(p===0)return"#2a1010";
+  if(p<0.4)return"#7a1a1a";
+  if(p<0.6)return"#ffaa00";
+  if(p<0.8)return"#c8ff00";
+  return"#44ff88";
+}
+function calcStreak(id){
+  let n=0;const d=new Date();
+  for(let i=0;i<365;i++){if(ldDay(d.toISOString().slice(0,10))[id])n++;else break;d.setDate(d.getDate()-1);}
+  return n;
+}
+
+async function ping(title,msg,tags){
+  try{await fetch("https://ntfy.sh/"+NTFY,{method:"POST",body:msg,headers:{Title:title,Priority:"3",Tags:tags||"white_check_mark"}});}catch{}
+}
+async function sendSnapshot(nd,habits,active,total){
+  const nowDone=active.filter(x=>nd[x.id]).length;
+  const pct=Math.round(nowDone/total*100);
+  await ping("HABIT_SNAPSHOT",JSON.stringify({
+    date:todayStr(),done:nowDone,total,pct,
+    checkedIds:active.filter(x=>nd[x.id]).map(x=>x.id),
+    noPornStreak:calcStreak("noporn"),
+    allHabits:habits.map(h=>({id:h.id,name:h.name,cat:h.cat,icon:h.icon,thu:h.thu||false})),
+    timestamp:Date.now()
+  }),"data");
+}
+
+function Rings({catPct}){
+  return(
+    <svg width="220" height="220" viewBox="0 0 220 220" style={{display:"block",margin:"0 auto"}}>
+      {RINGS.map(r=><circle key={"b"+r.cat} cx="110" cy="110" r={r.r} fill="none" stroke={BD} strokeWidth="8"/>)}
+      {RINGS.map(r=>{
+        const p=catPct(r.cat);
+        return <circle key={"f"+r.cat} cx="110" cy="110" r={r.r} fill="none" stroke={r.color} strokeWidth="8" strokeLinecap="round" strokeDasharray={r.circ} strokeDashoffset={r.circ*(1-p)} transform="rotate(-90 110 110)" style={{transition:"stroke-dashoffset 0.5s ease"}}/>;
+      })}
+    </svg>
+  );
+}
+
+function App(){
+  const today=todayStr();
+  const [habits,setHabits]=useState(()=>loadAllHabits());
+  const [screen,setScreen]=useState("home");
+  const [dayData,setDayData]=useState(()=>ldDay(today));
+  const [mood,setMood]=useState(()=>ldMood(today));
+  const [syncing,setSyncing]=useState(false);
+  const [lastSync,setLastSync]=useState(null);
+  const [toast,setToast]=useState(null);
+  const [monthDate,setMonthDate]=useState(new Date());
+  const [selectedDay,setSelectedDay]=useState(null);
+
+  // Add/Edit modal state
+  const [editTarget,setEditTarget]=useState(null); // null=closed, "new", or habit object
+  const [editName,setEditName]=useState("");
+  const [editIcon,setEditIcon]=useState("⭐");
+  const [editCat,setEditCat]=useState("mind");
+  const [editThu,setEditThu]=useState(false);
+  const [deleteConfirm,setDeleteConfirm]=useState(null);
+
+  const active=habits.filter(h=>!h.thu||isThu());
+  const total=active.length;
+  const done=active.filter(h=>dayData[h.id]).length;
+  const overallPct=total?Math.round(done/total*100):0;
+  const noPornStreak=calcStreak("noporn");
+  const isNoPornToday=!!dayData.noporn;
+
+  function catPct(catId){
+    const h=active.filter(x=>x.cat===catId);
+    return h.length?h.filter(x=>dayData[x.id]).length/h.length:0;
+  }
+
+  function showToast(msg){setToast(msg);setTimeout(()=>setToast(null),2500);}
+
+  async function toggle(id){
+    const nd={...dayData,[id]:!dayData[id]};
+    svDay(today,nd);setDayData(nd);
+    const h=habits.find(x=>x.id===id);
+    const nowDone=active.filter(x=>nd[x.id]).length;
+    const p=Math.round(nowDone/total*100);
+    if(nd[id]){const s=calcStreak(id)+1;showToast(s>1?h.name+" — "+s+"d streak 🔥":h.name+" ✓");}
+    setSyncing(true);
+    await ping((nd[id]?"✅ ":"❌ ")+h.name,nowDone+"/"+total+" ("+p+"%)"+(h.critical?" CRITICAL":""),h.critical?"brain":"white_check_mark");
+    await sendSnapshot(nd,habits,active,total);
+    setSyncing(false);
+    setLastSync(new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}));
+    if(nowDone===total)ping("🏆 Perfect Day","All "+total+" habits complete.","trophy");
+  }
+
+  function setMoodVal(key,val){
+    const nm={...mood,[key]:mood[key]===val?0:val};
+    svMood(today,nm);setMood(nm);
+  }
+
+  // Open add modal
+  function openAdd(catId){
+    setEditTarget("new");
+    setEditName("");setEditIcon("⭐");setEditCat(catId);setEditThu(false);
+  }
+
+  // Open edit modal
+  function openEdit(h){
+    setEditTarget(h);
+    setEditName(h.name);setEditIcon(h.icon);setEditCat(h.cat);setEditThu(!!h.thu);
+  }
+
+  async function saveHabit(){
+    if(!editName.trim())return;
+    let updated;
+    if(editTarget==="new"){
+      const h={id:"c"+Date.now(),name:editName.trim(),icon:editIcon||"⭐",cat:editCat,thu:editThu||undefined};
+      updated=[...habits,h];
+      showToast("Added: "+h.name);
+      await ping("➕ New Habit",h.icon+" "+h.name+" ("+editCat+")"+(editThu?" Thu only":""),"white_check_mark");
+    } else {
+      updated=habits.map(h=>h.id===editTarget.id?{...h,name:editName.trim(),icon:editIcon||h.icon,cat:editCat,thu:editThu||undefined}:h);
+      showToast("Updated: "+editName.trim());
+      await ping("✏️ Habit Edited",editIcon+" "+editName.trim()+" updated","white_check_mark");
+    }
+    setHabits(updated);saveAllHabits(updated);
+    const newActive=updated.filter(h=>!h.thu||isThu());
+    await sendSnapshot(dayData,updated,newActive,newActive.length);
+    setEditTarget(null);
+  }
+
+  async function deleteHabit(id){
+    const h=habits.find(x=>x.id===id);
+    const updated=habits.filter(x=>x.id!==id);
+    setHabits(updated);saveAllHabits(updated);
+    setDeleteConfirm(null);setEditTarget(null);
+    showToast("Removed: "+h.name);
+    await ping("➖ Habit Removed",h.name+" deleted","white_check_mark");
+    const newActive=updated.filter(x=>!x.thu||isThu());
+    await sendSnapshot(dayData,updated,newActive,newActive.length);
+  }
+
+  const mono=(ex={})=>({fontFamily:"Space Mono",fontSize:10,letterSpacing:2,color:G,...ex});
+  const row=(ex={})=>({display:"flex",alignItems:"center",...ex});
+  const y=monthDate.getFullYear(),mo=monthDate.getMonth();
+  const dim=daysInMonth(y,mo),firstDow=new Date(y,mo,1).getDay();
+  const monthLabel=monthDate.toLocaleDateString("en-US",{month:"long",year:"numeric"});
+
+  // ── EDIT / ADD MODAL ──
+  if(editTarget!==null) return(
+    <div style={{background:BG,color:T,minHeight:"100vh",fontFamily:"Syne,sans-serif",display:"flex",flexDirection:"column",maxWidth:480,margin:"0 auto"}}>
+      <div style={{padding:"44px 24px 20px",...row({justifyContent:"space-between"})}}>
+        <div style={{fontSize:20,fontWeight:800}}>{editTarget==="new"?"Add Habit":"Edit Habit"}</div>
+        <button onClick={()=>setEditTarget(null)} style={mono({background:"none",border:"1px solid "+BD,borderRadius:8,padding:"8px 14px",cursor:"pointer"})}>CANCEL</button>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"0 24px 40px"}}>
+        <div style={{marginBottom:16}}>
+          <div style={mono({display:"block",marginBottom:8})}>NAME</div>
+          <input value={editName} onChange={e=>setEditName(e.target.value)} placeholder="Habit name"
+            autoFocus
+            style={{width:"100%",background:S,border:"1px solid "+BD,borderRadius:10,padding:"14px",color:T,fontFamily:"Syne",fontSize:15,outline:"none"}}/>
+        </div>
+        <div style={{marginBottom:16}}>
+          <div style={mono({display:"block",marginBottom:8})}>EMOJI</div>
+          <input value={editIcon} onChange={e=>setEditIcon(e.target.value)}
+            style={{width:60,background:S,border:"1px solid "+BD,borderRadius:10,padding:"10px",color:T,fontSize:24,outline:"none",textAlign:"center"}}/>
+        </div>
+        <div style={{marginBottom:16}}>
+          <div style={mono({display:"block",marginBottom:8})}>CATEGORY</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {CATS.map(c=>(
+              <button key={c.id} onClick={()=>setEditCat(c.id)}
+                style={{padding:"8px 14px",borderRadius:8,cursor:"pointer",fontFamily:"Space Mono",fontSize:9,letterSpacing:1,border:"1px solid "+(editCat===c.id?c.color:BD),background:editCat===c.id?c.color+"18":"transparent",color:editCat===c.id?c.color:M}}>
+                {c.name.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{marginBottom:28,...row({gap:12})}}>
+          <button onClick={()=>setEditThu(!editThu)}
+            style={{display:"flex",alignItems:"center",gap:8,background:"none",border:"1px solid "+(editThu?"#c8ff00":BD),borderRadius:10,padding:"10px 16px",cursor:"pointer",fontFamily:"Space Mono",fontSize:9,color:editThu?"#c8ff00":M,letterSpacing:1}}>
+            <div style={{width:14,height:14,borderRadius:3,background:editThu?"#c8ff00":BD,flexShrink:0}}/>
+            THURSDAY ONLY (RETA etc.)
+          </button>
+        </div>
+        <button onClick={saveHabit}
+          style={{width:"100%",background:"#c8ff00",color:"#000",border:"none",borderRadius:14,padding:18,fontFamily:"Syne",fontWeight:800,fontSize:16,cursor:"pointer",marginBottom:12}}>
+          {editTarget==="new"?"ADD HABIT":"SAVE CHANGES"}
+        </button>
+        {editTarget!=="new"&&(
+          deleteConfirm===editTarget.id?(
+            <div style={{background:"rgba(255,68,68,0.08)",border:"1px solid rgba(255,68,68,0.4)",borderRadius:14,padding:16}}>
+              <div style={{fontSize:14,color:"#ff8888",marginBottom:12,textAlign:"center"}}>Remove "{editTarget.name}"? This can't be undone.</div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>deleteHabit(editTarget.id)}
+                  style={{flex:1,background:"#ff4444",color:"#fff",border:"none",borderRadius:10,padding:14,fontFamily:"Syne",fontWeight:800,fontSize:14,cursor:"pointer"}}>
+                  DELETE
+                </button>
+                <button onClick={()=>setDeleteConfirm(null)}
+                  style={{flex:1,background:"none",color:M,border:"1px solid "+BD,borderRadius:10,padding:14,fontFamily:"Syne",fontWeight:700,cursor:"pointer"}}>
+                  KEEP IT
+                </button>
+              </div>
+            </div>
+          ):(
+            <button onClick={()=>setDeleteConfirm(editTarget.id)}
+              style={{width:"100%",background:"none",color:"#ff4444",border:"1px solid rgba(255,68,68,0.3)",borderRadius:14,padding:16,fontFamily:"Syne",fontWeight:700,fontSize:14,cursor:"pointer"}}>
+              REMOVE THIS HABIT
+            </button>
+          )
+        )}
+      </div>
+    </div>
+  );
+
+  // ── DAY DETAIL ──
+  if(selectedDay){
+    const data=ldDay(selectedDay),md=ldMood(selectedDay);
+    const dow=dayOfWeek(selectedDay);
+    const dayH=habits.filter(h=>!h.thu||(h.thu&&dow===4));
+    const formatted=new Date(selectedDay+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
+    const p=dayPct(selectedDay,habits);
+    return(
+      <div style={{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne,sans-serif",maxWidth:480,margin:"0 auto"}}>
+        <div style={{padding:"44px 24px 20px",...row({justifyContent:"space-between",alignItems:"flex-start"})}}>
+          <div>
+            <div style={mono({display:"block",marginBottom:4})}>{selectedDay===today?"TODAY":selectedDay}</div>
+            <div style={{fontSize:18,fontWeight:800}}>{formatted}</div>
+            <div style={{fontFamily:"Space Mono",fontSize:13,color:pctColor(p),marginTop:6}}>{dayH.filter(h=>data[h.id]).length}/{dayH.length} · {p!==null?Math.round(p*100):0}%</div>
+          </div>
+          <button onClick={()=>setSelectedDay(null)} style={mono({background:"none",border:"1px solid "+BD,borderRadius:8,padding:"8px 12px",cursor:"pointer"})}>CLOSE</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"0 20px 40px"}}>
+          {CATS.map(cat=>{
+            const h=dayH.filter(x=>x.cat===cat.id);
+            if(!h.length)return null;
+            return(
+              <div key={cat.id} style={{marginBottom:16}}>
+                <div style={mono({color:cat.color,display:"block",marginBottom:8})}>{cat.name.toUpperCase()}</div>
+                {h.map(x=>(
+                  <div key={x.id} style={{...row({gap:12}),padding:"9px 0",borderBottom:"1px solid "+BD}}>
+                    <span style={{fontSize:18}}>{x.icon}</span>
+                    <span style={{flex:1,fontSize:13,color:data[x.id]?T:M}}>{x.name}</span>
+                    <span style={{fontSize:18}}>{data[x.id]?"✅":"❌"}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+          {(md.productive||md.happy)&&(
+            <div style={{marginTop:12}}>
+              <div style={mono({display:"block",marginBottom:10})}>MOOD</div>
+              {md.productive&&<div style={{...row({gap:10}),marginBottom:8}}><span style={{fontSize:13,color:M,width:100}}>Productive</span><span style={{fontSize:22}}>{MOOD_SCALE[md.productive]}</span></div>}
+              {md.happy&&<div style={row({gap:10})}><span style={{fontSize:13,color:M,width:100}}>Happy</span><span style={{fontSize:22}}>{MOOD_SCALE[md.happy]}</span></div>}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── MONTH ──
+  if(screen==="month"){
+    const pastDays=Array.from({length:dim},(_,i)=>{const d=dayStr(y,mo,i+1);return d<=today?d:null;}).filter(Boolean);
+    const perfect=pastDays.filter(d=>dayPct(d,habits)>=1).length;
+    const good=pastDays.filter(d=>{const p=dayPct(d,habits);return p!==null&&p>=0.8;}).length;
+    const avgPct=pastDays.length?Math.round(pastDays.reduce((s,d)=>{const p=dayPct(d,habits);return s+(p||0);},0)/pastDays.length*100):0;
+    return(
+      <div style={{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne,sans-serif",maxWidth:480,margin:"0 auto"}}>
+        <div style={{padding:"44px 24px 20px",...row({justifyContent:"space-between"})}}>
+          <button onClick={()=>setScreen("home")} style={mono({background:"none",border:"1px solid "+BD,borderRadius:8,padding:"8px 14px",cursor:"pointer"})}>← BACK</button>
+          <div style={row({gap:10})}>
+            <button onClick={()=>{const d=new Date(monthDate);d.setMonth(d.getMonth()-1);setMonthDate(new Date(d));}} style={{background:"none",border:"1px solid "+BD,borderRadius:8,width:32,height:32,color:M,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+            <div style={mono({color:T,letterSpacing:1})}>{monthLabel.toUpperCase()}</div>
+            <button onClick={()=>{const d=new Date(monthDate);d.setMonth(d.getMonth()+1);setMonthDate(new Date(d));}} style={{background:"none",border:"1px solid "+BD,borderRadius:8,width:32,height:32,color:M,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+          </div>
+          <div style={{width:80}}/>
+        </div>
+        <div style={{...row({gap:8}),padding:"0 20px 16px"}}>
+          {[[perfect,"🏆","Perfect"],[good,"✅","80%+"],[avgPct+"%","📊","Avg"]].map(([v,icon,label])=>(
+            <div key={label} style={{flex:1,background:S,border:"1px solid "+BD,borderRadius:12,padding:"12px 8px",textAlign:"center"}}>
+              <div style={{fontSize:18,marginBottom:4}}>{icon}</div>
+              <div style={{fontFamily:"Space Mono",fontSize:16,fontWeight:700,color:T}}>{v}</div>
+              <div style={mono({fontSize:8,marginTop:4})}>{label.toUpperCase()}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{...row({gap:10,justifyContent:"center",flexWrap:"wrap"}),padding:"0 20px 12px"}}>
+          {[["#44ff88","80%+"],["#c8ff00","60%+"],["#ffaa00","40%+"],["#7a1a1a","<40%"],["#1a1a1a","None"]].map(([c,l])=>(
+            <div key={l} style={row({gap:5})}><div style={{width:10,height:10,borderRadius:3,background:c}}/><span style={mono({fontSize:9})}>{l}</span></div>
+          ))}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,padding:"0 16px",marginBottom:4}}>
+          {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d=><div key={d} style={{textAlign:"center",...mono({fontSize:9,display:"block",padding:"3px 0"})}}>{d}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,padding:"0 16px",flex:1}}>
+          {Array.from({length:firstDow},(_,i)=><div key={"e"+i}/>)}
+          {Array.from({length:dim},(_,i)=>{
+            const d=i+1,ds=dayStr(y,mo,d),isFuture=ds>today,isT=ds===today;
+            const p=dayPct(ds,habits),bg=isFuture?"#0f0f0f":pctColor(p),textDark=!isFuture&&p!==null&&p>0.6;
+            return(
+              <div key={d} onClick={()=>{if(!isFuture)setSelectedDay(ds);}}
+                style={{background:bg,borderRadius:8,aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:isFuture?"default":"pointer",border:isT?"2px solid #c8ff00":"2px solid transparent"}}>
+                <span style={{fontFamily:"Space Mono",fontSize:11,color:isFuture?G:textDark?"#000":"#fff",fontWeight:isT?"700":"400",lineHeight:1}}>{d}</span>
+                {!isFuture&&p!==null&&<span style={{fontFamily:"Space Mono",fontSize:8,color:textDark?"rgba(0,0,0,0.6)":"rgba(255,255,255,0.5)",lineHeight:1,marginTop:1}}>{Math.round(p*100)}%</span>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{padding:"16px",textAlign:"center"}}><div style={mono({fontSize:9})}>TAP ANY DAY TO SEE DETAILS</div></div>
+      </div>
+    );
+  }
+
+  // ── HOME ──
+  return(
+    <div style={{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne,sans-serif",maxWidth:480,margin:"0 auto",position:"relative"}}>
+      {toast&&<div style={{position:"fixed",top:56,left:"50%",transform:"translateX(-50%)",background:"#1a1a1a",border:"1px solid #333",borderRadius:10,padding:"10px 18px",fontFamily:"Space Mono",fontSize:11,color:T,zIndex:999,whiteSpace:"nowrap",letterSpacing:1,animation:"slidein 0.2s ease"}}>{toast}</div>}
+
+      <div style={{padding:"44px 24px 12px",...row({justifyContent:"space-between",alignItems:"flex-start"})}}>
+        <div>
+          <div style={mono({display:"block",marginBottom:6})}>HABIT TRACKER</div>
+          <div style={{fontSize:17,fontWeight:800}}>{new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</div>
+        </div>
+        <button onClick={()=>setScreen("month")} style={mono({background:"none",border:"1px solid "+BD,borderRadius:8,padding:"8px 12px",cursor:"pointer",marginTop:4})}>MONTH →</button>
+      </div>
+
+      <div style={{padding:"8px 0 0"}}>
+        <Rings catPct={catPct}/>
+        <div style={{textAlign:"center",padding:"10px 0 0"}}>
+          <div style={{fontFamily:"Space Mono",fontSize:40,fontWeight:700,color:T,lineHeight:1}}>{overallPct}%</div>
+          <div style={mono({display:"block",marginTop:4})}>{done} / {total} COMPLETE</div>
+        </div>
+        <div style={{...row({justifyContent:"center",gap:10,flexWrap:"wrap"}),padding:"10px 20px 4px"}}>
+          {CATS.map(c=>{
+            const h=active.filter(x=>x.cat===c.id);
+            const d=h.filter(x=>dayData[x.id]).length;
+            return <div key={c.id} style={row({gap:5})}><div style={{width:7,height:7,borderRadius:"50%",background:c.color}}/><span style={mono({fontSize:9,color:G})}>{c.name.toUpperCase()}</span><span style={mono({fontSize:9,color:c.color})}>{h.length?Math.round(d/h.length*100):0}%</span></div>;
+          })}
+        </div>
+      </div>
+
+      {/* No Porn hero */}
+      <div onClick={()=>toggle("noporn")}
+        style={{margin:"12px 20px",background:isNoPornToday?"rgba(255,68,136,0.08)":S,border:"1px solid "+(isNoPornToday?"rgba(255,68,136,0.5)":BD),borderRadius:16,padding:"14px 20px",...row({justifyContent:"space-between"}),cursor:"pointer"}}>
+        <div>
+          <div style={mono({color:"#ff4488",display:"block",marginBottom:4})}>NO PORN STREAK</div>
+          <div style={{fontSize:28,fontWeight:800,color:isNoPornToday?"#ff4488":M,lineHeight:1}}>{noPornStreak} {noPornStreak===1?"day":"days"}</div>
+        </div>
+        <div style={{width:50,height:50,borderRadius:"50%",border:"3px solid "+(isNoPornToday?"#ff4488":BD),background:isNoPornToday?"rgba(255,68,136,0.15)":"transparent",...row({justifyContent:"center"}),fontSize:22,flexShrink:0}}>
+          {isNoPornToday?"✓":"🧠"}
+        </div>
+      </div>
+
+      {/* Habits */}
+      <div style={{flex:1,overflowY:"auto",padding:"0 20px 16px"}}>
+        {CATS.map(cat=>{
+          const catH=active.filter(h=>h.cat===cat.id&&h.id!=="noporn");
+          return(
+            <div key={cat.id} style={{marginBottom:20}}>
+              <div style={{...row({gap:8}),marginBottom:10}}>
+                <div style={{width:7,height:7,borderRadius:"50%",background:cat.color}}/>
+                <span style={mono({color:cat.color})}>{cat.name.toUpperCase()}</span>
+                <div style={{flex:1,height:1,background:BD}}/>
+                <span style={mono()}>{catH.filter(h=>dayData[h.id]).length}/{catH.length}</span>
+              </div>
+              {catH.map(h=>{
+                const checked=!!dayData[h.id];
+                const streak=calcStreak(h.id);
+                return(
+                  <div key={h.id} style={{...row({gap:12}),padding:"12px 14px",marginBottom:7,background:checked?"rgba(255,255,255,0.03)":S,border:"1px solid "+(checked?cat.color:BD),borderRadius:12}}>
+                    {/* Check circle — tapping this toggles */}
+                    <div onClick={()=>toggle(h.id)}
+                      style={{width:26,height:26,borderRadius:"50%",border:"2px solid "+(checked?cat.color:BD),background:checked?cat.color:"transparent",...row({justifyContent:"center"}),flexShrink:0,cursor:"pointer",transition:"all 0.2s"}}>
+                      {checked&&<span style={{color:"#000",fontSize:13,fontWeight:800}}>✓</span>}
+                    </div>
+                    {/* Main row — tapping opens edit */}
+                    <div onClick={()=>openEdit(h)} style={{...row({gap:10}),flex:1,cursor:"pointer"}}>
+                      <span style={{fontSize:18,flexShrink:0}}>{h.icon}</span>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:700,color:checked?T:M}}>{h.name}</div>
+                        {streak>1&&<div style={{fontFamily:"Space Mono",fontSize:10,color:cat.color,marginTop:2}}>{streak}d streak 🔥</div>}
+                      </div>
+                      <span style={{fontSize:12,color:G}}>✏️</span>
+                    </div>
+                  </div>
+                );
+              })}
+              <button onClick={()=>openAdd(cat.id)}
+                style={{width:"100%",padding:"10px",background:"transparent",border:"1px dashed "+BD,borderRadius:10,color:G,fontFamily:"Space Mono",fontSize:9,cursor:"pointer",letterSpacing:2,marginTop:2}}>
+                + ADD {cat.name.toUpperCase()} HABIT
+              </button>
+            </div>
+          );
+        })}
+
+        {/* Mood */}
+        <div style={{background:"#0d0d0d",border:"1px solid #222",borderRadius:16,padding:20,marginBottom:20}}>
+          <div style={mono({display:"block",color:"#555",marginBottom:4})}>DOESN'T COUNT TOWARDS RINGS</div>
+          <div style={{fontSize:16,fontWeight:800,marginBottom:18}}>How was today?</div>
+          {[["productive","Felt Productive?"],["happy","Felt Happy?"]].map(([key,label])=>(
+            <div key={key} style={{marginBottom:14}}>
+              <div style={{fontSize:12,color:M,marginBottom:8}}>{label}</div>
+              <div style={row({gap:6})}>
+                {[1,2,3,4,5].map(v=>(
+                  <button key={v} onClick={()=>setMoodVal(key,v)}
+                    style={{flex:1,fontSize:22,padding:"8px 0",lineHeight:1,cursor:"pointer",background:mood[key]===v?"rgba(255,255,255,0.07)":"transparent",border:"1px solid "+(mood[key]===v?"#555":BD),borderRadius:10}}>
+                    {MOOD_SCALE[v]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{padding:"6px 20px 32px",...row({justifyContent:"center",gap:8})}}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:syncing?"#ffaa00":"#44ff88",animation:syncing?"pulse 1s infinite":""}}/>
+        <span style={mono()}>{syncing?"SYNCING TO TARJM...":lastSync?"SYNCED "+lastSync:"TARJM READY"}</span>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

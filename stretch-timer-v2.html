@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stretch">
+<title>Stretch Timer</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{background:#0a0a0a;color:#f0f0f0;font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;}
+::-webkit-scrollbar{display:none;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+@keyframes pop{0%{transform:scale(0.8);opacity:0}100%{transform:scale(1);opacity:1}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+const NTFY = "elijah-tarjm-x7k2m9";
+const CIRC = 2 * Math.PI * 88;
+const BG="#0a0a0a",S="#111",BD="#1a1a1a",T="#f0f0f0",M="#777",G="#444";
+
+async function ping(title, msg, tags) {
+  try {
+    await fetch("https://ntfy.sh/" + NTFY, {
+      method: "POST", body: msg,
+      headers: { Title: title, Priority: "3", Tags: tags || "person_in_lotus_position" }
+    });
+  } catch {}
+}
+
+// ── 3 ROUTINES ──
+const ROUTINES = {
+  pf: {
+    id: "pf",
+    name: "Pelvic Floor",
+    emoji: "🧘",
+    color: "#c8ff00",
+    tag: "Daily PF protocol",
+    stretches: [
+      { name:"Cat-Cow",          emoji:"🐱", dur:120, cue:"Breathe into lower belly. Pelvis rocks freely. Exhale fully each time." },
+      { name:"Butterfly",        emoji:"🦋", dur:180, cue:"Feet together, knees drop. Let gravity do it. Don't push." },
+      { name:"Hip Flexor",       emoji:"🦵", dur:180, cue:"Low lunge. Tuck pelvis under. Feel front of hip. Switch sides halfway." },
+      { name:"Deep Squat",       emoji:"🏋️", dur:300, cue:"Heels down if possible. Chest up. 5 minutes releases what 30 sec misses." },
+      { name:"Happy Baby",       emoji:"👶", dur:180, cue:"Grab outer feet. Knees wide. Rock gently. Sacrum flat to the floor." },
+      { name:"Child's Pose",     emoji:"🙇", dur:180, cue:"Arms forward. Breathe into back and pelvis. Reverse Kegel on every exhale." },
+      { name:"Downward Dog",     emoji:"🐕", dur:120, cue:"Pedal the heels. Spine decompresses. Feel the entire posterior chain release." },
+    ]
+  },
+  pre_skate: {
+    id: "pre_skate",
+    name: "Pre-Skate",
+    emoji: "🛹",
+    color: "#ffaa00",
+    tag: "Pre-skate warmup",
+    stretches: [
+      { name:"Ankle Circles",       emoji:"🔄", dur:60,  cue:"Full range both directions — 30 sec each. Gets fluid in the joint capsule." },
+      { name:"Hip Circles",         emoji:"🌀", dur:60,  cue:"Biggest circles you can make. Hips loose = better trick mechanics." },
+      { name:"Leg Swings Fwd/Back", emoji:"🦵", dur:60,  cue:"Swing freely — momentum only, don't force it. Hip flexor and hamstring." },
+      { name:"Leg Swings Lateral",  emoji:"↔️", dur:60,  cue:"Side to side across body. Hip abductors and adductors." },
+      { name:"Hip 90/90",           emoji:"🧘", dur:120, cue:"Both legs at 90°. Sit tall. Switch at 1 min. Direct skating mobility." },
+      { name:"Ankle Dorsiflexion",  emoji:"🦶", dur:90,  cue:"Knee forward to wall. Heel stays down. This is your ollie height ceiling." },
+      { name:"Deep Squat Hold",     emoji:"🏋️", dur:120, cue:"Sink in and hold. Heels down, chest up. Wakes up the full leg chain." },
+      { name:"Standing Hip Flexor", emoji:"🦵", dur:90,  cue:"One knee down, tuck pelvis, lean forward. Each side 45 sec. Loosens pop." },
+      { name:"Calf Stretch",        emoji:"💪", dur:60,  cue:"Heel to floor, straight leg. Full stretch. Tight calves kill ankle mobility." },
+    ]
+  },
+  post_skate: {
+    id: "post_skate",
+    name: "Post-Skate",
+    emoji: "🏁",
+    color: "#44ff88",
+    tag: "Post-skate recovery",
+    stretches: [
+      { name:"Calf Foam Roll",      emoji:"🦵", dur:120, cue:"Roll slowly. Pause on tight spots. Directly helps ankle recovery and dorsiflexion." },
+      { name:"Quad Foam Roll",      emoji:"🦿", dur:90,  cue:"Front of thigh. Roll from hip to knee. Rotate foot in and out to hit all fibers." },
+      { name:"Plantar Fascia Roll", emoji:"🦶", dur:120, cue:"Lacrosse ball or bottle under foot. Full coverage — heel to toes. Both feet." },
+      { name:"Seated Forward Fold", emoji:"🙇", dur:180, cue:"Legs straight. Hinge from hips not waist. Feel the hamstrings slowly release." },
+      { name:"Pigeon Pose",         emoji:"🕊️", dur:180, cue:"Front shin parallel to mat. Hip drops toward floor. Deep glute and hip opener." },
+      { name:"Figure 4 Stretch",    emoji:"4️⃣",  dur:120, cue:"On back. Ankle over knee. Pull toward chest. IT band and piriformis." },
+      { name:"Supine Spinal Twist", emoji:"🌀", dur:120, cue:"On back. Knee across body. Shoulder stays flat. Full spinal rotation. Both sides." },
+      { name:"Happy Baby",          emoji:"👶", dur:120, cue:"Hold and rock. Let the sacrum melt into the floor. Decompress the whole spine." },
+      { name:"Legs Up the Wall",    emoji:"🧘", dur:180, cue:"Hips close to wall, legs straight up. Drains lactic acid. Complete recovery reset." },
+    ]
+  }
+};
+
+function fmt(s) {
+  return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+}
+function totalMins(stretches) {
+  return Math.round(stretches.reduce((a,b)=>a+b.dur,0)/60);
+}
+
+// ── RING TIMER ──
+function Ring({ timeLeft, total, color }) {
+  const pct = total > 0 ? timeLeft / total : 1;
+  const offset = CIRC * (1 - pct);
+  const ringColor = timeLeft <= 10 ? "#ff4444" : timeLeft <= 30 ? "#ffaa00" : color;
+  return (
+    <svg width="200" height="200" viewBox="0 0 200 200" style={{display:"block",margin:"0 auto"}}>
+      <circle cx="100" cy="100" r="88" fill="none" stroke={BD} strokeWidth="6"/>
+      <circle cx="100" cy="100" r="88" fill="none"
+        stroke={ringColor} strokeWidth="6" strokeLinecap="round"
+        strokeDasharray={CIRC} strokeDashoffset={offset}
+        transform="rotate(-90 100 100)"
+        style={{transition:"stroke-dashoffset 1s linear, stroke 0.3s"}}/>
+      <text x="100" y="96" textAnchor="middle" fill={timeLeft<=10?"#ff4444":T}
+        fontFamily="Space Mono" fontSize="42" fontWeight="700">
+        {fmt(timeLeft)}
+      </text>
+      <text x="100" y="116" textAnchor="middle" fill={G}
+        fontFamily="Space Mono" fontSize="10" letterSpacing="2">
+        REMAINING
+      </text>
+    </svg>
+  );
+}
+
+// ── MAIN APP ──
+function App() {
+  const [screen, setScreen] = useState("home"); // home | active | done
+  const [routineId, setRoutineId] = useState(null);
+  const [idx, setIdx] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [completedRoutine, setCompletedRoutine] = useState(null);
+
+  const endRef = useRef(null);
+  const rafRef = useRef(null);
+  const startRef = useRef(null);
+  const pausedAtRef = useRef(null);
+  const pausedMsRef = useRef(0);
+
+  const routine = routineId ? ROUTINES[routineId] : null;
+  const stretches = routine ? routine.stretches : [];
+  const stretch = stretches[idx];
+
+  const tick = useCallback(() => {
+    if (!endRef.current) return;
+    const rem = Math.max(0, Math.round((endRef.current - Date.now()) / 1000));
+    setTimeLeft(rem);
+    if (rem === 10 && navigator.vibrate) navigator.vibrate([100]);
+    if (rem === 0) {
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      advanceTo(idx + 1);
+      return;
+    }
+    rafRef.current = requestAnimationFrame(tick);
+  }, [idx, stretches.length]);
+
+  useEffect(() => {
+    if (screen !== "active" || !stretch || paused) return;
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [tick, screen, paused, idx]);
+
+  // Visibility sync
+  useEffect(() => {
+    const fn = () => {
+      if (document.visibilityState === "visible" && screen === "active" && !paused && endRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+    document.addEventListener("visibilitychange", fn);
+    return () => document.removeEventListener("visibilitychange", fn);
+  }, [screen, paused, tick]);
+
+  function advanceTo(newIdx) {
+    cancelAnimationFrame(rafRef.current);
+    if (newIdx >= stretches.length) {
+      finish();
+      return;
+    }
+    // Ping each stretch as it completes (fire-and-forget — no await needed)
+    if (newIdx > 0) {
+      ping("✓ " + stretches[newIdx - 1].name, (routine?.name || "Stretch") + " in progress", "white_check_mark");
+    }
+    const dur = stretches[newIdx].dur;
+    endRef.current = Date.now() + dur * 1000;
+    setTimeLeft(dur);
+    setIdx(newIdx);
+    setPaused(false);
+    if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+    rafRef.current = requestAnimationFrame(tick);
+  }
+
+  function startRoutine(id) {
+    const r = ROUTINES[id];
+    setRoutineId(id);
+    setIdx(0);
+    setPaused(false);
+    pausedMsRef.current = 0;
+    startRef.current = Date.now();
+    const dur = r.stretches[0].dur;
+    endRef.current = Date.now() + dur * 1000;
+    setTimeLeft(dur);
+    setScreen("active");
+    if (navigator.vibrate) navigator.vibrate([50]);
+    ping(r.emoji + " " + r.name + " Started", r.tag + " — " + r.stretches.length + " stretches", "person_in_lotus_position");
+  }
+
+  function togglePause() {
+    if (paused) {
+      const ms = Date.now() - pausedAtRef.current;
+      pausedMsRef.current += ms;
+      endRef.current += ms;
+      pausedAtRef.current = null;
+      setPaused(false);
+    } else {
+      cancelAnimationFrame(rafRef.current);
+      pausedAtRef.current = Date.now();
+      setPaused(true);
+    }
+  }
+
+  async function finish() {
+    const el = Math.round((Date.now() - startRef.current - pausedMsRef.current) / 1000);
+    setElapsed(el);
+    setCompletedRoutine(routine);
+    setScreen("done");
+    if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 300]);
+    await ping(
+      routine.emoji + " " + routine.name + " Complete",
+      routine.tag + " done — " + stretches.length + " stretches, " + Math.round(el/60) + " min",
+      "person_in_lotus_position"
+    );
+    // Structured data for Tarjm
+    await ping("STRETCH_DATA", JSON.stringify({
+      routine: routine.id,
+      routineName: routine.name,
+      stretches: stretches.length,
+      duration: el,
+      date: new Date().toISOString().slice(0,10),
+      timestamp: Date.now()
+    }), "data");
+  }
+
+  const mono = (ex={}) => ({fontFamily:"Space Mono",fontSize:10,letterSpacing:2,color:G,...ex});
+
+  // ── HOME ──
+  if (screen === "home") return (
+    <div style={{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne,sans-serif",maxWidth:480,margin:"0 auto"}}>
+      <div style={{padding:"44px 24px 20px",borderBottom:"1px solid "+BD}}>
+        <div style={mono({display:"block",marginBottom:8})}>DAILY PROTOCOL</div>
+        <div style={{fontSize:32,fontWeight:800,lineHeight:1}}>Stretch<br/><span style={{color:"#c8ff00"}}>Timer</span></div>
+      </div>
+
+      <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px",display:"flex",flexDirection:"column",gap:14}}>
+        {Object.values(ROUTINES).map(r => (
+          <button key={r.id} onClick={() => startRoutine(r.id)}
+            style={{background:S,border:"1px solid "+BD,borderRadius:16,padding:"20px",textAlign:"left",cursor:"pointer",color:T,fontFamily:"Syne",display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{fontSize:28,marginBottom:6}}>{r.emoji}</div>
+                <div style={{fontSize:20,fontWeight:800}}>{r.name}</div>
+                <div style={{fontFamily:"Space Mono",fontSize:11,color:r.color,marginTop:4,letterSpacing:1}}>
+                  {r.stretches.length} stretches · {totalMins(r.stretches)} min
+                </div>
+              </div>
+              <div style={{fontFamily:"Space Mono",fontSize:11,color:r.color,border:"1px solid "+r.color,borderRadius:8,padding:"6px 12px",flexShrink:0}}>
+                START →
+              </div>
+            </div>
+            {/* Stretch preview pills */}
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {r.stretches.map((s,i) => (
+                <div key={i} style={{fontFamily:"Space Mono",fontSize:9,color:G,background:BD,borderRadius:6,padding:"4px 8px"}}>
+                  {s.emoji} {s.name}
+                </div>
+              ))}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ── DONE ──
+  if (screen === "done") return (
+    <div style={{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne,sans-serif",maxWidth:480,margin:"0 auto",alignItems:"center",justifyContent:"center",padding:"40px 32px",textAlign:"center"}}>
+      <div style={{fontSize:72,marginBottom:16,animation:"pop 0.4s ease"}}>{completedRoutine?.emoji||"🔥"}</div>
+      <div style={{fontSize:40,fontWeight:800,color:completedRoutine?.color||"#c8ff00",marginBottom:8}}>DONE.</div>
+      <div style={{fontSize:15,color:M,marginBottom:8}}>{completedRoutine?.name} complete</div>
+      <div style={mono({color:G,marginBottom:32})}>SENT TO TARJM ✓</div>
+      <div style={{display:"flex",gap:32,marginBottom:48}}>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontFamily:"Space Mono",fontSize:36,color:T}}>{Math.round(elapsed/60)}</div>
+          <div style={mono({fontSize:8,marginTop:4})}>MINUTES</div>
+        </div>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontFamily:"Space Mono",fontSize:36,color:T}}>{stretches.length}</div>
+          <div style={mono({fontSize:8,marginTop:4})}>STRETCHES</div>
+        </div>
+      </div>
+      <button onClick={() => { setScreen("home"); setRoutineId(null); setIdx(0); }}
+        style={{width:"100%",maxWidth:320,background:completedRoutine?.color||"#c8ff00",color:"#000",border:"none",borderRadius:16,padding:20,fontFamily:"Syne",fontWeight:800,fontSize:17,cursor:"pointer"}}>
+        BACK TO HOME
+      </button>
+    </div>
+  );
+
+  // ── ACTIVE ──
+  if (screen === "active" && stretch) return (
+    <div style={{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne,sans-serif",maxWidth:480,margin:"0 auto"}}>
+      {/* Header */}
+      <div style={{padding:"44px 24px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <button onClick={() => { cancelAnimationFrame(rafRef.current); setScreen("home"); setRoutineId(null); }}
+          style={mono({background:"none",border:"1px solid "+BD,borderRadius:8,padding:"8px 14px",cursor:"pointer"})}>
+          QUIT
+        </button>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2}}>
+          <div style={mono({color:routine.color})}>{routine.emoji} {routine.name.toUpperCase()}</div>
+          <div style={mono()}>{idx+1} / {stretches.length}</div>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{padding:"0 24px",marginBottom:4}}>
+        <div style={{height:2,background:BD,borderRadius:2}}>
+          <div style={{height:"100%",width:`${(idx/stretches.length)*100}%`,background:routine.color,borderRadius:2,transition:"width 0.4s"}}/>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",padding:"12px 24px 8px",overflowY:"auto"}}>
+        <div style={{fontSize:56,marginBottom:10}}>{stretch.emoji}</div>
+        <div style={{fontSize:24,fontWeight:800,textAlign:"center",marginBottom:8}}>{stretch.name}</div>
+        <div style={{fontSize:14,color:M,textAlign:"center",maxWidth:300,lineHeight:1.6,marginBottom:20}}>
+          {stretch.cue}
+        </div>
+
+        <Ring timeLeft={timeLeft} total={stretch.dur} color={routine.color}/>
+
+        <div style={{display:"flex",gap:12,width:"100%",maxWidth:320,marginTop:24}}>
+          <button onClick={togglePause}
+            style={{flex:0.7,padding:16,borderRadius:12,border:"1px solid "+BD,background:S,color:T,fontFamily:"Syne",fontWeight:700,fontSize:14,cursor:"pointer"}}>
+            {paused ? "RESUME" : "PAUSE"}
+          </button>
+          <button onClick={() => advanceTo(idx+1)}
+            style={{flex:1.3,padding:16,borderRadius:12,border:"none",background:routine.color,color:"#000",fontFamily:"Syne",fontWeight:800,fontSize:15,cursor:"pointer"}}>
+            {idx >= stretches.length-1 ? "FINISH ✓" : "NEXT →"}
+          </button>
+        </div>
+      </div>
+
+      {/* Queue pills */}
+      <div style={{padding:"12px 20px 32px"}}>
+        <div style={mono({display:"block",textAlign:"center",marginBottom:10})}>UP NEXT</div>
+        <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4}}>
+          {stretches.map((s,i) => (
+            <div key={i} style={{
+              flexShrink:0,background:i<idx?BG:S,
+              border:"1px solid "+(i===idx?routine.color:BD),
+              borderRadius:8,padding:"7px 12px",
+              fontSize:11,
+              color:i<idx?G:i===idx?T:G,
+              opacity:i<idx?0.4:1,
+              whiteSpace:"nowrap"
+            }}>
+              {s.emoji} {s.name}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

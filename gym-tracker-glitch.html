@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gym">
+<title>Gym Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{background:#0a0a0a;font-family:'Syne',sans-serif;}
+  input[type=number]{-webkit-appearance:none;-moz-appearance:textfield;}
+  ::-webkit-scrollbar{display:none;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState } = React;
+
+// ── LocalStorage storage shim (works on Glitch) ──
+const storage = {
+  async get(key) {
+    const v = localStorage.getItem(key);
+    if (v === null) throw new Error('not found');
+    return { key, value: v };
+  },
+  async set(key, value) {
+    localStorage.setItem(key, value);
+    return { key, value };
+  },
+  async list(prefix) {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith(prefix));
+    return { keys };
+  }
+};
+
+const A="#c8ff00",BG="#0a0a0a",S="#111",BD="#1a1a1a",T="#f0f0f0",M="#777",G="#444";
+const EFFORT_COLORS=["","#44ff88","#88cc00","#c8ff00","#ffaa00","#ff4444"];
+
+const NTFY="elijah-tarjm-x7k2m9";
+async function ping(title,msg,tags){
+  try{
+    await fetch("https://ntfy.sh/"+NTFY,{
+      method:"POST",body:msg,
+      headers:{Title:title,Priority:"3",Tags:tags||"muscle"}
+    });
+  }catch{}
+}
+
+const DAYS=[
+  {id:"push",name:"Push",label:"DAY 1",emoji:"🔥",
+   note:"Flies before bench. Upper chest first. Squeeze like cracking a walnut.",
+   warmup:[
+    {id:"w1",n:"Arm Circles",r:"10 each way",s:2,setup:"Stand tall, arms straight out to sides at shoulder height.",howto:"Slow circles small to large. Forward 10, then reverse 10. Gets blood to shoulder joint before pressing.",c:"Loosens shoulder capsule."},
+    {id:"w2",n:"Band Pull-Aparts",r:"15",s:3,setup:"Hold band shoulder-width, arms straight in front at chest height.",howto:"Pull band apart until it touches your chest. Squeeze shoulder blades. Slow return. No band? Doorframe chest stretch instead.",c:"Activates rear delts and rotator cuff."},
+    {id:"w3",n:"Push-Up Shoulder Taps",r:"10 each side",s:2,setup:"Full push-up position, core tight.",howto:"Without rotating hips, lift one hand and tap opposite shoulder. Alternate. If hips rotate, widen feet.",c:"Serratus and core stability."},
+    {id:"w4",n:"Empty Bar Incline Press",r:"15",s:2,setup:"Incline bench 30-45°. Lightest possible weight. Blood flow only.",howto:"Full range of motion. Feel the upper chest stretch at bottom. No grinding. This is warmup weight.",c:"Blood into chest fibers before working sets."},
+   ],
+   ex:[
+    {id:"clf",n:"Cable Fly Low→High",s:4,r:"15",effort:3,effLbl:"Moderate",muscles:"Upper chest, front delt",setup:"Both pulleys at lowest position. Stand center, feet staggered, lean slightly forward.",howto:"Slight fixed elbow bend. Arc arms up and together to eye level. Squeeze upper chest hard at top. Slow return. Full stretch at bottom — control it, don't let it jerk you.",c:"Pre-exhaust upper chest. Full stretch every rep."},
+    {id:"ifl",n:"Incline DB Fly",s:3,r:"12",effort:3,effLbl:"Moderate",muscles:"Upper chest, pec minor",setup:"Incline 30-45°. Dumbbells above chest, slight elbow bend — fixed.",howto:"Lower in wide arc until deep stretch in upper chest. Hold 1 sec. Squeeze back together. Go lighter than you think. The stretch IS the exercise.",c:"Full stretch at bottom. Weight doesn't matter — stretch does."},
+    {id:"idb",n:"Incline DB Press",s:4,r:"8-10",effort:4,effLbl:"Hard",muscles:"Upper chest, triceps, front delt",setup:"Incline 30-45°. Feet flat. Elbows at 75° — not flared to 90°.",howto:"2 sec pause at very bottom. Feel upper chest stretch. Drive up and slightly inward. Don't fully lock out. Lower controlled. Last 2 reps genuinely hard.",c:"2 sec pause at bottom. Drive up and inward."},
+    {id:"ibp",n:"Incline Bar / Smith",s:3,r:"8",effort:4,effLbl:"Hard",muscles:"Upper chest, triceps",setup:"Incline 30°. Slightly wider than shoulder-width grip. Retract and depress shoulder blades before unracking.",howto:"3 seconds down. Touch upper chest. Drive up. Don't bounce. Blades retracted entire set. If shoulders feel it more than chest — angle too high or elbows flaring.",c:"Shoulder blades pinched throughout. Upper chest target."},
+    {id:"cch",n:"Cable Cross High→Low",s:3,r:"15",effort:3,effLbl:"Moderate",muscles:"Lower chest, pec sternal fibers",setup:"Both pulleys at highest position. Stand between cables, lean forward slightly.",howto:"Bring hands down and together to hip level. Squeeze lower/inner chest at bottom. Slow return. Anti-sag work — lower chest fibers.",c:"Hands to hip level. Squeeze lower chest hard."},
+    {id:"ohp",n:"Overhead Press",s:4,r:"8-10",effort:4,effLbl:"Hard",muscles:"Front delt, side delt, triceps",setup:"Dumbbells at shoulder level. Elbows 45° in front, not flared out.",howto:"Press directly overhead. Slight shrug at top to fully engage upper trap. Lower controlled. Press UP not forward — head neutral.",c:"Full lockout. Slight shrug at top."},
+    {id:"dlr",n:"DB Lateral Raise",s:3,r:"15",effort:3,effLbl:"Moderate",muscles:"Side delt (medial head)",setup:"Light dumbbells. Slight elbow bend — fixed. Lean very slightly forward.",howto:"Lead with elbows not wrists. Raise to shoulder height. Tilt front of dumbbell down at top (pouring water). 3 sec lower. Burn should be in side of shoulder, not traps.",c:"Lead elbows. Tilt dumbbell down at top. 3 sec lower."},
+    {id:"rdf",n:"Rear Delt Fly",s:3,r:"15",effort:3,effLbl:"Moderate",muscles:"Rear delt, rhomboids, mid trap",setup:"Sit at bench end, hinge forward until chest near thighs. Dumbbells hanging.",howto:"Elbow slightly bent and fixed — raise arms out to sides until parallel to floor. Squeeze blades at top. Slow lower. Go light, go slow.",c:"Hinge forward. Blades squeeze at top."},
+    {id:"skc",n:"Skull Crush + CG Press",s:3,r:"10",effort:4,effLbl:"Hard",muscles:"All three tricep heads",setup:"EZ bar, flat bench. Grip 6 inches apart. Arms straight above chest.",howto:"Lower bar to forehead bending only at elbows — elbows point ceiling. Then immediately: close grip press to lower chest and back up. No racking between. Pre-fatigued from skulls so press feels heavier.",c:"No rack between. Elbows fixed pointing up."},
+   ]},
+  {id:"pull",name:"Pull",label:"DAY 2",emoji:"💪",
+   note:"Every rep felt in the lats — not the arms.",
+   warmup:[
+    {id:"w1",n:"Dead Hang",r:"20-30 sec",s:3,setup:"Overhand grip, shoulder-width. Step off and fully relax.",howto:"Just hang. Let shoulder joint decompress. Lats stretch. Don't actively pull. Grip warmup too.",c:"Shoulder decompression. Pure stretch."},
+    {id:"w2",n:"Scapular Pull-Ups",r:"10",s:3,setup:"Dead hang on pull-up bar.",howto:"WITHOUT bending elbows — squeeze shoulder blades together and DOWN. Body rises a few inches. Back to full hang. This teaches lats to initiate the pull, not arms.",c:"No elbow bend. Lats initiate. Essential."},
+    {id:"w3",n:"Band Pull-Aparts",r:"15",s:3,setup:"Band at chest height, arms straight, shoulder-width.",howto:"Pull band horizontally apart until it touches chest. Squeeze. Slow return. Rear delt and rotator cuff activation.",c:"Rear delt activation before rows."},
+    {id:"w4",n:"Light Lat Pulldown",r:"15",s:2,setup:"Lightest weight on pulldown machine.",howto:"30% effort only. Focus on FEELING the lats. Drive elbows down to hips. Can't feel lats? Lighter. Build the connection before loading it.",c:"Blood flow + lat connection. Not exercise."},
+   ],
+   ex:[
+    {id:"pup",n:"Pull Ups",s:4,r:"Max",effort:5,effLbl:"Max",bw:true,muscles:"Lats, biceps, rear delt",setup:"Overhand grip, slightly wider than shoulder-width. Full dead hang every single rep.",howto:"Drive elbows DOWN toward hips — not pulling with arms. Chest to bar. Dead hang at bottom. Every rep. Log total reps. Beat last session by 1 total rep.",c:"Elbows drive DOWN. Chest to bar. Full dead hang."},
+    {id:"lpd",n:"Lat Pulldown",s:3,r:"12",effort:4,effLbl:"Hard",muscles:"Lats, teres major, biceps",setup:"Wide overhand grip. Thighs under pads. Lean back 10-15° max.",howto:"Drive elbows to hips. Bar to upper chest. Squeeze lats — hold 1 sec. Slow return, full stretch at top. More than 15° lean = lower back not lats.",c:"Elbows to hips. 1 sec squeeze at bottom."},
+    {id:"dbr",n:"Bench DB Row",s:3,r:"10 ea",effort:4,effLbl:"Hard",muscles:"Lats, mid back, rear delt",setup:"Hand and knee on bench. Body parallel to floor. Don't twist torso.",howto:"Drive elbow toward CEILING — not hip, ceiling. Full stretch at bottom. Squeeze 1 sec at top. Reset between reps if needed.",c:"Elbow to ceiling. Full stretch. 1 sec at top."},
+    {id:"hrw",n:"Horizontal Row",s:3,r:"12",effort:3,effLbl:"Moderate",muscles:"Mid back, rhomboids, lower trap",setup:"Cable row or barbell at chest height. Back neutral, slight hip hinge.",howto:"FIRST retract shoulder blades — THEN row. Most people skip retraction and only use arms. Drive elbows back past torso, pause, squeeze, slow return.",c:"Retract FIRST then row. Mid back not biceps."},
+    {id:"sap",n:"Straight Arm Pulldown",s:3,r:"15",effort:3,effLbl:"Moderate",muscles:"Lats, serratus anterior",setup:"High cable, rope or bar. Stand back. Arms extended up toward pulley.",howto:"Arms COMPLETELY STRAIGHT the whole time. Pull down until hands at thighs. Squeeze lats hard. Slow return. Removes bicep entirely from the movement.",c:"Arms STRAIGHT. Pure lat isolation."},
+    {id:"icl",n:"Incline Curl",s:3,r:"12",effort:3,effLbl:"Moderate",muscles:"Biceps long head, brachialis",setup:"Incline bench 45-60°. Arms hanging straight down behind you.",howto:"Curl with palms up the whole time. Elbows stay pinned back at top. Full stretch at bottom is the entire point of this variation.",c:"Arms fully back. Full stretch is the point."},
+    {id:"scl",n:"Supinated Curl",s:3,r:"12",effort:3,effLbl:"Moderate",muscles:"Biceps short head",setup:"Dumbbells at sides, palms facing body (hammer) to start.",howto:"As you curl, rotate wrist until palms face ceiling at the top. Squeeze hard — hold 1 sec. Lower with control rotating back to neutral.",c:"Rotate wrist AS you curl. Peak squeeze 1 sec."},
+   ]},
+  {id:"skate",name:"Skate Strength",label:"DAY 3",emoji:"🛹",
+   note:"Functional only. Never heavy. Ankle stability is the entire goal.",
+   warmup:[
+    {id:"w1",n:"Ankle Circles",r:"30 sec each foot",s:2,setup:"Sit or stand. Lift one foot off ground. Relax ankle.",howto:"Full range circles with big toe. 30 sec clockwise then counter-clockwise each foot. Your ankles take everything skating — sprains happen on cold ankles.",c:"Get fluid in the joint capsule."},
+    {id:"w2",n:"Hip Circles",r:"10 each direction",s:2,setup:"Feet shoulder-width, hands on hips, slight knee bend.",howto:"Rotate hips in the biggest circles possible. Keep upper body still. Tight hips limit ollie height and trick mechanics directly.",c:"Big circles. Loose hips = better tricks."},
+    {id:"w3",n:"Leg Swings Forward/Back",r:"10 each leg",s:2,setup:"Stand sideways to wall, touch lightly for balance.",howto:"Swing free leg forward and back in controlled arc. Let momentum carry it. Don't force. Opens hip flexor and hamstring dynamically.",c:"Let it swing naturally. Don't force range."},
+    {id:"w4",n:"Bodyweight Squat",r:"15",s:2,setup:"Feet shoulder-width, toes out 15-30°. Arms in front.",howto:"Full depth. Knees track over toes. Drive through mid-foot and heels. Blood flow to legs before any loading.",c:"Full depth. Blood flow only."},
+   ],
+   ex:[
+    {id:"adw",n:"Ankle Dorsiflexion Wall",s:3,r:"10",effort:1,effLbl:"Activation",bw:true,muscles:"Ankle joint, soleus, tibialis anterior",setup:"Facing wall. Toes of one foot against wall. Heel on floor.",howto:"Drive knee forward until it touches wall. If it touches easily, move foot further back. Find where it BARELY touches with heel flat. That's your current range. This is the #1 limiter of ollie height.",c:"Heel must stay down. Find your limit each set."},
+    {id:"h90",n:"Hip 90/90 Stretch",s:1,r:"2 min",effort:1,effLbl:"Activation",bw:true,muscles:"Hip internal/external rotators",setup:"Sit on floor. One leg forward at 90°. Other leg behind at 90°. Both knees at 90°.",howto:"Sit TALL. Don't collapse spine. Feel stretch in both hip rotators simultaneously. Switch sides at 1 minute. This range of motion is directly used in trick mechanics.",c:"Both 90°. Sit tall. Switch at 1 min."},
+    {id:"bss",n:"Bulgarian Split Squat",s:3,r:"10 ea",effort:4,effLbl:"Hard",muscles:"Quads, glutes, hip flexors",setup:"Rear foot elevated on bench. Front foot far enough forward that front shin stays vertical at bottom.",howto:"Drop back knee straight DOWN — not forward. Front shin vertical. Drive through front heel to stand. The hip flexor stretch at bottom should be intense. Best single exercise for skating-specific leg strength.",c:"Back knee drops DOWN. Front shin vertical."},
+    {id:"srd",n:"Single Leg RDL",s:3,r:"10 ea",effort:3,effLbl:"Moderate",muscles:"Hamstrings, glutes, ankle stability",setup:"Stand on one leg, slight bend locked in. Dumbbell in opposite or both hands.",howto:"Hinge at hip — push hips back, weight lowers toward floor, non-working leg extends behind. Hips stay SQUARE — don't let raised hip rotate up. Ankle is constantly working micro-corrections.",c:"Hips square. Hamstring stretch. Ankle working."},
+    {id:"lbw",n:"Lateral Band Walks",s:3,r:"15 ea",effort:2,effLbl:"Light",bw:true,muscles:"Glute medius, hip abductors",setup:"Band just above knees. Slight squat — stay there entire set.",howto:"Step sideways maintaining band tension — feet never come together. Knees drive OUT against band throughout. Weak glute medius = knees caving on landing. This is the fix.",c:"Stay low. Knees out against band. Prevent knee cave."},
+    {id:"stu",n:"Step Ups",s:3,r:"12 ea",effort:3,effLbl:"Moderate",muscles:"Quads, glutes, single-leg strength",setup:"Box at knee height. One foot on top.",howto:"Drive through FRONT heel ONLY to stand. Back foot barely touches if at all. Stand fully, pause, lower controlled. If pushing off back foot — not training the target leg.",c:"Front heel ONLY. Back foot is a ghost."},
+    {id:"crf",n:"Calf Raises",s:4,r:"20",effort:3,effLbl:"Moderate",muscles:"Gastrocnemius, soleus",setup:"Edge of step, heel hanging off. One or two legs. Wall lightly for balance.",howto:"Lower heel BELOW step — full stretch. Rise to absolute maximum on ball of foot. Slow both ways. 20 full range beats 30 partial every time.",c:"Full range. Deep stretch down, tippy top up."},
+    {id:"tib",n:"Tibialis Raises",s:3,r:"15",effort:2,effLbl:"Light",bw:true,muscles:"Tibialis anterior",setup:"Back flat against wall. Heels 6 inches from wall. Feet flat.",howto:"Raise toes and front foot as high as possible. Heel stays on ground. Hold 1 sec at top. Lower controlled. Front shin should burn. This muscle controls the kickflip catch AND prevents shin splints.",c:"Toes as high as possible. Front shin burns."},
+    {id:"slb",n:"Single Leg Balance",s:2,r:"1 min ea",effort:2,effLbl:"Light",bw:true,muscles:"Ankle stabilizers, proprioception",setup:"Stand on one leg. Arms at sides. Timer.",howto:"Eyes open 30 sec, eyes CLOSED last 30 sec. The wobbling is the training — don't fight it, let your ankle work. This is proprioception training. Board feel is built here more than anywhere else.",c:"Eyes closed last 30 sec. The wobble IS the training."},
+    {id:"hth",n:"Hip Thrust",s:4,r:"15",effort:4,effLbl:"Hard",muscles:"Glutes, hamstrings, core",setup:"Shoulders on bench. Feet flat, knees 90° when hips are up. Bar with pad or dumbbell at hips.",howto:"Drive hips up until straight line shoulder to knee. Squeeze glutes HARD — hold 1 sec. Lower until hips almost touch floor. Ribs flaring = gone too high. Glutes are skating's engine.",c:"Straight line at top. Glutes squeezed. 1 sec hold."},
+    {id:"dbu",n:"Dead Bug",s:3,r:"10 ea",effort:2,effLbl:"Light",bw:true,muscles:"Deep core, transverse abdominis",setup:"On back. Arms up. Knees at 90°. Lower back PRESSED FLAT — stays flat the whole time.",howto:"Slowly lower one arm overhead AND opposite leg toward floor. Both stay off floor. Return. Switch. If lower back lifts AT ALL — reduce range. Back flat is the exercise.",c:"Lower back FLAT always. Non-negotiable."},
+    {id:"gbs",n:"Goblet Squat",s:3,r:"12",effort:3,effLbl:"Moderate",muscles:"Quads, glutes, ankle mobility",setup:"Dumbbell at chest, goblet position. Feet slightly wider, toes out 30°.",howto:"Elbows track inside knees and push them out as you squat. Go as deep as ankle mobility allows without heels lifting. Weight in front = more upright torso = better depth.",c:"Elbows inside knees, push out. Depth = ankle mobility."},
+   ]},
+];
+
+function dateStr(){return new Date().toISOString().slice(0,10);}
+
+function GymTracker(){
+  const [screen,setScreen]=useState("home");
+  const [dIdx,setDIdx]=useState(0);
+  const [wIdx,setWIdx]=useState(0);
+  const [eIdx,setEIdx]=useState(0);
+  const [weights,setWeights]=useState({});
+  const [prevW,setPrevW]=useState({});
+  const [done,setDone]=useState(null);
+  const [expandedEx,setExpandedEx]=useState(null);
+  const [report,setReport]=useState("");
+  const [showRep,setShowRep]=useState(false);
+  const [copied,setCopied]=useState(false);
+
+  const day=DAYS[dIdx];
+  const warmupEx=day.warmup[wIdx];
+  const ex=day.ex[eIdx];
+  const prevArr=prevW[ex?.id]||[];
+  const curArr=weights[ex?.id]||[];
+
+  async function startDay(i){
+    setDIdx(i);setWIdx(0);setEIdx(0);setExpandedEx(null);
+    const init={};
+    DAYS[i].ex.forEach(e=>{init[e.id]=Array(e.s).fill("");});
+    setWeights(init);
+    const p={};
+    try{
+      const res=await storage.list("gym:");
+      if(res&&res.keys.length){
+        const keys=res.keys.filter(k=>k.includes(DAYS[i].id)&&!k.includes(dateStr())).sort().reverse();
+        if(keys.length){
+          const d=await storage.get(keys[0]);
+          if(d) JSON.parse(d.value).ex.forEach(e=>{p[e.id]=e.weights;});
+        }
+      }
+    }catch{}
+    setPrevW(p);
+    setScreen("warmup");
+  }
+
+  async function nextWarmup(){
+    if(wIdx>=day.warmup.length-1){
+      setScreen("workout");
+      await ping("Warmup Done",day.name+" warmup complete","white_check_mark");
+    }
+    else setWIdx(i=>i+1);
+  }
+
+  function setW(id,i,v){
+    setWeights(w=>{const a=[...(w[id]||[])];a[i]=v;return{...w,[id]:a};});
+  }
+
+  async function nextEx(){
+    // Ping current exercise with weights before advancing
+    if(ex){
+      const w=(weights[ex.id]||[]).filter(Boolean);
+      if(w.length&&!ex.bw){
+        await ping(ex.n,ex.s+"×"+ex.r+" — "+w.join("/")+"lb","muscle");
+      }
+    }
+    if(eIdx>=day.ex.length-1){
+      const s={date:dateStr(),day:day.name,dayId:day.id,
+        ex:day.ex.map(e=>({id:e.id,name:e.n,target:`${e.s}×${e.r}`,weights:weights[e.id]||[]}))};
+      setDone(s);
+      try{
+        await storage.set(`gym:${dateStr()}:${day.id}`,JSON.stringify(s));
+        let log=[];
+        try{const x=await storage.get("tarjm:all");if(x)log=JSON.parse(x.value);}catch{}
+        log.unshift({type:"gym",...s});
+        await storage.set("tarjm:all",JSON.stringify(log.slice(0,50)));
+      }catch{}
+      await ping("💪 Gym Done",day.name+" — "+day.ex.length+" exercises logged","muscle");
+      setScreen("done");
+    }else{setEIdx(i=>i+1);setExpandedEx(null);}
+  }
+
+  async function loadReport(){
+    try{
+      const r=await storage.get("tarjm:all");
+      if(!r){setReport("No sessions logged yet.");return;}
+      const log=JSON.parse(r.value).filter(s=>s.type==="gym");
+      if(!log.length){setReport("No gym sessions yet.");return;}
+      setReport(["=== GYM LOG FOR TARJM ===",
+        ...log.slice(0,10).map(s=>`\n📅 ${s.date} — ${s.day}\n`+
+          s.ex.map(e=>{const w=(e.weights||[]).filter(Boolean);
+            return`  ${e.name} (${e.target}): ${w.length?w.join(" / ")+"lb":"—"}`;
+          }).join("\n"))
+      ].join("\n"));
+    }catch(e){setReport("Error: "+e.message);}
+  }
+
+  const dot=(n)=>Array.from({length:5},(_,i)=>(
+    React.createElement('span',{key:i,style:{display:"inline-block",width:8,height:8,borderRadius:"50%",background:i<n?EFFORT_COLORS[n]:BD,marginRight:3,verticalAlign:"middle"}})
+  ));
+
+  const btn=(txt,onClick,style={})=>React.createElement('button',{onClick,style:{cursor:"pointer",fontFamily:"Syne",border:"none",...style}},txt);
+
+  const Hdr=()=>React.createElement('div',{style:{padding:"48px 24px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+    btn("QUIT",()=>setScreen("home"),{fontFamily:"Space Mono",fontSize:10,color:G,background:"none",border:`1px solid ${BD}`,borderRadius:8,padding:"8px 14px",letterSpacing:1}),
+    React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:11,letterSpacing:2,color:G}},
+      screen==="warmup"?`WARMUP ${wIdx+1} / ${day.warmup.length}`:`${eIdx+1} / ${day.ex.length}`)
+  );
+
+  const Bar=(pct,color=A)=>React.createElement('div',{style:{padding:"0 24px",marginBottom:16}},
+    React.createElement('div',{style:{height:2,background:BD,borderRadius:2}},
+      React.createElement('div',{style:{height:"100%",width:`${pct*100}%`,background:color,borderRadius:2,transition:"width 0.4s"}}))
+  );
+
+  // HOME
+  if(screen==="home") return React.createElement('div',{style:{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne"}},
+    React.createElement('div',{style:{padding:"40px 24px 20px",borderBottom:`1px solid ${BD}`}},
+      React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,letterSpacing:3,color:G,display:"block",marginBottom:8}},"GYM TRACKER"),
+      React.createElement('div',{style:{fontSize:34,fontWeight:800,lineHeight:1.1}},
+        "Gym",React.createElement('br'),React.createElement('span',{style:{color:A}},"Program"))),
+    React.createElement('div',{style:{flex:1,padding:16,overflowY:"auto",display:"flex",flexDirection:"column",gap:10}},
+      ...DAYS.map((d,i)=>btn(
+        React.createElement('div',{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",width:"100%",gap:12}},
+          React.createElement('div',null,
+            React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:G,letterSpacing:2,display:"block",marginBottom:4}},d.label),
+            React.createElement('div',{style:{fontSize:20,fontWeight:800,marginBottom:4}},`${d.emoji} ${d.name}`),
+            React.createElement('div',{style:{fontSize:12,color:M,lineHeight:1.4,marginBottom:6}},d.note),
+            React.createElement('div',{style:{fontFamily:"Space Mono",fontSize:10,color:G}},`${d.warmup.length} warmup · ${d.ex.length} exercises`)),
+          React.createElement('span',{style:{fontSize:20,color:A,flexShrink:0,marginTop:4}},"→")),
+        ()=>startDay(i),{display:"flex",justifyContent:"space-between",padding:"18px 20px",background:S,border:`1px solid ${BD}`,borderRadius:14,color:T,textAlign:"left",fontFamily:"Syne",width:"100%"})),
+      btn(
+        React.createElement('div',{style:{display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%"}},
+          React.createElement('div',{style:{fontSize:14,fontWeight:700}},"🤖 Tarjm Report"),
+          React.createElement('div',{style:{fontFamily:"Space Mono",fontSize:10,color:G}},"last 10 →")),
+        async()=>{await loadReport();setShowRep(true);},
+        {display:"flex",padding:"18px 20px",background:S,border:`1px dashed ${BD}`,borderRadius:14,color:T,textAlign:"left",width:"100%"})),
+    showRep&&React.createElement('div',{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",display:"flex",alignItems:"flex-end",padding:20,zIndex:100}},
+      React.createElement('div',{style:{background:S,border:`1px solid ${BD}`,borderRadius:20,padding:24,width:"100%",maxHeight:"75vh",display:"flex",flexDirection:"column"}},
+        React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:A,letterSpacing:2,display:"block",marginBottom:12}},"TARJM GYM REPORT"),
+        React.createElement('pre',{style:{fontSize:11,color:M,whiteSpace:"pre-wrap",flex:1,overflowY:"auto",marginBottom:16,fontFamily:"Space Mono"}},report),
+        React.createElement('div',{style:{display:"flex",gap:8}},
+          btn(copied?"COPIED ✓":"COPY FOR TARJM",()=>{navigator.clipboard?.writeText(report);setCopied(true);setTimeout(()=>setCopied(false),2000);},{flex:1,background:A,color:"#000",borderRadius:12,padding:14,fontWeight:800,fontSize:14}),
+          btn("CLOSE",()=>setShowRep(false),{flex:0.5,background:"none",color:M,border:`1px solid ${BD}`,borderRadius:12,padding:14,fontWeight:700,fontSize:13}))))
+  );
+
+  // WARMUP
+  if(screen==="warmup"&&warmupEx) return React.createElement('div',{style:{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne"}},
+    Hdr(),
+    Bar(wIdx/day.warmup.length,"#44ff88"),
+    React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:"#44ff88",letterSpacing:2,display:"block",padding:"0 24px",marginBottom:16}},"WARMUP — ACTIVATION ONLY"),
+    React.createElement('div',{style:{flex:1,overflowY:"auto",padding:"0 20px 20px"}},
+      React.createElement('div',{style:{background:S,border:`1px solid ${BD}`,borderRadius:16,padding:20,marginBottom:12}},
+        React.createElement('div',{style:{fontSize:22,fontWeight:800,marginBottom:6}},warmupEx.n),
+        React.createElement('div',{style:{fontFamily:"Space Mono",fontSize:13,color:"#44ff88",marginBottom:10}},`${warmupEx.s} sets × ${warmupEx.r}`),
+        React.createElement('div',{style:{fontSize:13,color:M,lineHeight:1.5}},warmupEx.c)),
+      React.createElement('div',{style:{background:S,border:`1px solid ${BD}`,borderRadius:14,padding:18,marginBottom:8}},
+        React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:G,letterSpacing:2,display:"block",marginBottom:10}},"SET UP"),
+        React.createElement('div',{style:{fontSize:13,color:T,lineHeight:1.7}},warmupEx.setup)),
+      React.createElement('div',{style:{background:S,border:`1px solid #2a2a00`,borderRadius:14,padding:18}},
+        React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:A,letterSpacing:2,display:"block",marginBottom:10}},"HOW TO DO IT"),
+        React.createElement('div',{style:{fontSize:13,color:T,lineHeight:1.7}},warmupEx.howto))),
+    React.createElement('div',{style:{padding:"0 20px 40px"}},
+      btn(wIdx>=day.warmup.length-1?"START WORKOUT →":"NEXT WARMUP →",nextWarmup,{width:"100%",background:"#44ff88",color:"#000",borderRadius:14,padding:20,fontWeight:800,fontSize:16}))
+  );
+
+  // WORKOUT
+  if(screen==="workout"&&ex) return React.createElement('div',{style:{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne"}},
+    Hdr(),
+    Bar(eIdx/day.ex.length),
+    React.createElement('div',{style:{flex:1,overflowY:"auto",padding:"0 20px 20px"}},
+      React.createElement('div',{style:{background:S,border:`1px solid ${BD}`,borderRadius:16,padding:20,marginBottom:12}},
+        React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:G,letterSpacing:2,display:"block",marginBottom:8}},`${day.emoji} ${day.name.toUpperCase()}`),
+        React.createElement('div',{style:{fontSize:22,fontWeight:800,marginBottom:8}},ex.n),
+        React.createElement('div',{style:{display:"flex",alignItems:"center",gap:14,marginBottom:8,flexWrap:"wrap"}},
+          React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:13,color:A}},`${ex.s} sets × ${ex.r}`),
+          React.createElement('span',{style:{display:"flex",alignItems:"center",gap:5}},
+            ...dot(ex.effort),
+            React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:EFFORT_COLORS[ex.effort],letterSpacing:1}},ex.effLbl.toUpperCase()))),
+        React.createElement('div',{style:{fontFamily:"Space Mono",fontSize:10,color:G,marginBottom:6}},ex.muscles),
+        React.createElement('div',{style:{fontSize:13,color:M,lineHeight:1.5}},ex.c)),
+      btn(
+        React.createElement('div',{style:{display:"flex",justifyContent:"space-between",width:"100%"}},
+          React.createElement('span',null,"HOW TO DO IT"),
+          React.createElement('span',null,expandedEx===ex.id?"↑":"↓")),
+        ()=>setExpandedEx(expandedEx===ex.id?null:ex.id),
+        {width:"100%",background:S,border:`1px solid ${expandedEx===ex.id?A:BD}`,borderRadius:12,padding:"12px 16px",fontFamily:"Space Mono",fontSize:10,color:expandedEx===ex.id?A:G,letterSpacing:2,marginBottom:12,textAlign:"left",display:"flex",justifyContent:"space-between"}),
+      expandedEx===ex.id&&React.createElement('div',{style:{marginBottom:12}},
+        React.createElement('div',{style:{background:S,border:`1px solid ${BD}`,borderRadius:14,padding:18,marginBottom:8}},
+          React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:G,letterSpacing:2,display:"block",marginBottom:10}},"SET UP"),
+          React.createElement('div',{style:{fontSize:13,color:T,lineHeight:1.7}},ex.setup)),
+        React.createElement('div',{style:{background:S,border:`1px solid #2a2a00`,borderRadius:14,padding:18}},
+          React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:A,letterSpacing:2,display:"block",marginBottom:10}},"EXECUTION"),
+          React.createElement('div',{style:{fontSize:13,color:T,lineHeight:1.7}},ex.howto))),
+      React.createElement('div',{style:{display:"flex",justifyContent:"space-between",marginBottom:12}},
+        React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:G,letterSpacing:2}},"WEIGHT (LBS)"),
+        React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:G}},`PREV: ${prevArr.filter(Boolean).length?prevArr.filter(Boolean).join(" / ")+"lb":"first time"}`)),
+      ...Array.from({length:ex.s},(_,i)=>React.createElement('div',{key:i,style:{display:"flex",alignItems:"center",gap:12,marginBottom:10}},
+        React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:11,color:G,width:52,flexShrink:0}},`SET ${i+1}`),
+        ex.bw?
+          React.createElement('div',{style:{flex:1,padding:"14px 16px",background:BG,border:`1px solid ${BD}`,borderRadius:10,fontSize:13,color:M}},"Bodyweight"):
+          React.createElement('input',{type:"number",inputMode:"decimal",placeholder:prevArr[i]?`prev: ${prevArr[i]}lb`:"lbs",value:curArr[i]||"",onChange:e=>setW(ex.id,i,e.target.value),style:{flex:1,padding:"14px 16px",background:BG,border:`1px solid ${curArr[i]?A:BD}`,borderRadius:10,color:T,fontSize:20,fontFamily:"Space Mono",outline:"none",transition:"border-color 0.2s"}}),
+        prevArr[i]&&!ex.bw&&React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:11,color:G,flexShrink:0}},`${prevArr[i]}↑`)))),
+    React.createElement('div',{style:{padding:"0 20px 40px"}},
+      btn(eIdx>=day.ex.length-1?"FINISH SESSION ✓":"NEXT EXERCISE →",nextEx,{width:"100%",background:A,color:"#000",borderRadius:14,padding:20,fontWeight:800,fontSize:16}))
+  );
+
+  // DONE
+  if(screen==="done"&&done) return React.createElement('div',{style:{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne",alignItems:"center",justifyContent:"center",padding:"40px 24px",textAlign:"center"}},
+    React.createElement('div',{style:{fontSize:72,marginBottom:20}},"💪"),
+    React.createElement('div',{style:{fontSize:36,fontWeight:800,color:A,marginBottom:8}},"DONE."),
+    React.createElement('div',{style:{fontSize:14,color:M,marginBottom:32}},`${done.day} · ${done.date}`),
+    React.createElement('div',{style:{width:"100%",flex:1,overflowY:"auto",marginBottom:24}},
+      ...done.ex.map(e=>React.createElement('div',{key:e.id,style:{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${BD}`}},
+        React.createElement('div',{style:{fontSize:13,color:T,textAlign:"left"}},e.name),
+        React.createElement('div',{style:{fontFamily:"Space Mono",fontSize:11,color:(e.weights||[]).filter(Boolean).length?A:G}},
+          (e.weights||[]).filter(Boolean).length?(e.weights||[]).filter(Boolean).join("/")+`lb`:"—")))),
+    React.createElement('div',{style:{fontFamily:"Space Mono",fontSize:11,color:G,marginBottom:16}},"Saved to Tarjm ✓"),
+    btn("BACK TO HOME",()=>setScreen("home"),{width:"100%",background:A,color:"#000",borderRadius:14,padding:20,fontWeight:800,fontSize:16})
+  );
+
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(GymTracker));
+</script>
+</body>
+</html>

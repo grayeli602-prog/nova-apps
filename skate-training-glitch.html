@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Skate Training">
+<title>Skate Training</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{background:#0a0a0a;}
+  ::-webkit-scrollbar{display:none;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState } = React;
+
+const storage = {
+  async get(key){const v=localStorage.getItem(key);if(v===null)throw new Error('not found');return{key,value:v};},
+  async set(key,value){localStorage.setItem(key,value);return{key,value};},
+  async list(prefix){const keys=Object.keys(localStorage).filter(k=>k.startsWith(prefix));return{keys};}
+};
+
+const A="#c8ff00",BG="#0a0a0a",S="#111",BD="#1a1a1a",T="#f0f0f0",M="#777",G="#444";
+const EFFORT_COLORS=["","#44ff88","#88cc00","#c8ff00","#ffaa00","#ff4444"];
+function dateStr(){return new Date().toISOString().slice(0,10);}
+
+const NTFY="elijah-tarjm-x7k2m9";
+async function ping(title,msg,tags){
+  try{
+    await fetch("https://ntfy.sh/"+NTFY,{
+      method:"POST",body:msg,
+      headers:{Title:title,Priority:"3",Tags:tags||"skateboard"}
+    });
+  }catch{}
+}
+
+const SESSIONS=[
+  {id:"power",name:"Power & Pop",emoji:"⚡",sub:"Explosiveness, ollie height, landing strength",color:"#ffaa00",
+   ex:[
+    {id:"js",n:"Jump Squats",s:3,r:"10",effort:4,effLbl:"Hard",muscles:"Quads, glutes, calves",
+     benefit:"Direct ollie power. The explosive hip extension in a jump squat is the exact same movement as the pop in an ollie. More power here = more height.",
+     setup:"Feet shoulder-width. Hands behind head or crossed on chest. No weights.",
+     howto:"Squat to parallel, explode upward as hard as possible. Maximum height. Land SOFT — bend knees and absorb into a full squat. Reset your feet completely between every rep. Quality over speed — training explosiveness, not cardio.",
+     c:"Explode MAX, land SOFT. Reset fully between reps."},
+    {id:"bj",n:"Broad Jumps",s:3,r:"5",effort:4,effLbl:"Hard",muscles:"Entire leg, explosive hip drive",
+     benefit:"Horizontal power and landing mechanics. Manual control, gap landings, and covering distance on your board all come from this explosive hip drive.",
+     setup:"Stand behind a line. Feet shoulder-width. Arm swing ready.",
+     howto:"Swing arms back, load into squat, explode horizontally as far as possible. Land on BOTH feet with bent knees — deep absorption squat. Stick the landing. Walk back and reset.",
+     c:"Distance AND soft landing. Stick it every rep."},
+    {id:"slh",n:"Single Leg Hops",s:3,r:"8 each",effort:3,effLbl:"Moderate",muscles:"Calf, ankle stabilizers, single leg power",
+     benefit:"Landing a kickflip or heelflip is essentially a single-leg landing at speed. Your landing leg absorbs full impact. This trains exactly that.",
+     setup:"Stand on one leg. Other leg slightly lifted.",
+     howto:"Small hops forward, landing on the SAME foot. Knee tracks over toe on every landing. 8 reps forward then switch legs. Focus on the landing — knee bends, ankle absorbs, stick it.",
+     c:"Land on same foot. Knee tracks toe. It's about the landing."},
+    {id:"dd",n:"Depth Drop",s:3,r:"8",effort:3,effLbl:"Moderate",muscles:"Landing mechanics, full leg absorption",
+     benefit:"Trains your nervous system to absorb impact. The difference between bailing and riding away from a big drop is landing mechanics. This builds them.",
+     setup:"Stand on a curb or step 6-12 inches high.",
+     howto:"Step OFF — don't jump. The moment you land, absorb into a full squat. Hold 1 second. Goal is the smoothest possible landing. Land quiet.",
+     c:"Step off, don't jump. Land quiet. Deep squat on contact."},
+    {id:"esu",n:"Explosive Step-Ups",s:3,r:"10 each",effort:4,effLbl:"Hard",muscles:"Glutes, quads, single-leg power",
+     benefit:"Push-off mechanics for skating — specifically the drive leg when you pump or power a manual. One leg drives you hard and fast.",
+     setup:"Box or bench at knee height. One foot on top.",
+     howto:"DRIVE through top foot explosively until standing fully on box. Step down controlled. The explosive part is up. The controlled part is down. Back foot does nothing — it's hanging.",
+     c:"EXPLOSIVE up. Controlled down. Back foot does nothing."},
+   ]},
+  {id:"balance",name:"Balance & Feel",emoji:"🎯",sub:"Board feel, proprioception, trick consistency",color:A,
+   ex:[
+    {id:"slbe",n:"Single Leg Balance — Eyes Closed",s:3,r:"45 sec each",effort:2,effLbl:"Light",muscles:"Ankle stabilizers, proprioceptive system",
+     benefit:"The #1 training for board feel. The neural connections built balancing on one leg eyes closed are what let you feel the board under your feet without looking. More proprioception = more consistent tricks.",
+     setup:"Stand on one foot. Arms comfortable. Timer ready.",
+     howto:"Eyes open 15 sec, then close them. The wobbling and micro-corrections your ankle makes — that IS the training. Don't fight it. If you fall, reset. Do this on slightly soft surface if possible.",
+     c:"Eyes closed after 15 sec. The wobble is the training."},
+    {id:"slsq",n:"Single Leg Squat",s:3,r:"8 each",effort:4,effLbl:"Hard",muscles:"Quads, glutes, single-leg strength",
+     benefit:"Every landed trick is a single-leg squat at speed. Your landing leg takes full impact. If you can't do a controlled slow single-leg squat, you can't properly absorb a landing.",
+     setup:"Stand on one leg. Extend other leg forward. Hold wall lightly if needed — use less support as you get stronger.",
+     howto:"Sit back and down on the standing leg. Knee tracks directly over foot — don't let it cave. Go as deep as strength allows. Drive through heel to stand.",
+     c:"Knee tracks over foot. Support is fine. Work the range you have."},
+    {id:"slat",n:"Lateral Balance Reach",s:3,r:"10 each",effort:2,effLbl:"Light",muscles:"Glute medius, ankle stabilizers",
+     benefit:"Every carve, rail slide, or lateral weight shift on your board uses this system. Weak lateral stability = sketchy grinds.",
+     setup:"Stand on one leg. Other leg free. Slight bend in standing knee.",
+     howto:"Reach free leg out to the side as far as possible without tipping over. Hold 1 second. Return. 10 reps then switch. Advanced: reach forward, side, and diagonal.",
+     c:"Reach as far as possible without falling. 1 sec hold."},
+    {id:"sh",n:"Skater Lateral Hops",s:3,r:"10 each",effort:3,effLbl:"Moderate",muscles:"Full leg, lateral explosiveness",
+     benefit:"Literally the movement pattern of skating. Lateral power, single-leg landing, hold and stabilize. Every push, carve, rail is this pattern.",
+     setup:"Stand on one leg. Mark about 2-3 feet lateral distance.",
+     howto:"Explode laterally from one leg, land on OPPOSITE foot. Hold the landing for 2 full seconds before hopping back. The hold is where the training lives — absorbing and stabilizing on one leg after lateral movement. Control drill, not speed drill.",
+     c:"2 sec hold on landing. Control is the point."},
+    {id:"reb",n:"Reactive Balance",s:3,r:"30 sec each",effort:2,effLbl:"Light",muscles:"Proprioceptive system, ankle reactivity",
+     benefit:"When a board slips or does something unexpected — reactive ankle stability is what saves it instead of bails. This trains that reflex.",
+     setup:"Stand on one leg. Slight knee bend. Eyes closed.",
+     howto:"With eyes closed, introduce random perturbations — gently tap one shoulder, shift arms unexpectedly, touch wall and push slightly. Respond and recover. The randomness is the entire point.",
+     c:"Respond and recover. Eyes closed. React to what you don't expect."},
+   ]},
+  {id:"ankle",name:"Ankle & Foot",emoji:"🦶",sub:"Ankle strength, board control, injury prevention",color:"#ff6644",
+   ex:[
+    {id:"slcr",n:"Single Leg Calf Raises",s:4,r:"20",effort:3,effLbl:"Moderate",muscles:"Gastrocnemius, soleus",
+     benefit:"Your calf is your engine when you push. Weak calves = weak push, tired ankles after long sessions, higher sprain risk. 4 sets of 20 single-leg is harder than it sounds.",
+     setup:"Edge of step, heel hanging off. One leg. Hold wall lightly for balance only — don't lean into it.",
+     howto:"Lower heel BELOW step for full stretch. Rise to absolute maximum on ball of foot. Slow both ways. 20 full-range reps. If easy, hold a dumbbell or go slower.",
+     c:"Full range both ways. Deep stretch down. Tippy top up."},
+    {id:"tib",n:"Tibialis Raises",s:3,r:"15",effort:2,effLbl:"Light",muscles:"Tibialis anterior",
+     benefit:"Controls the catch phase of kickflips and heelflips. Prevents shin splints from long sessions. Most skaters have almost zero development here.",
+     setup:"Back flat against wall. Heels 6 inches from wall. Feet flat.",
+     howto:"Raise toes and front foot as high as possible, heels on ground. Hold 1 sec at top. Lower controlled. Front of shin should burn.",
+     c:"Toes as high as possible. Front shin burns. Kickflip catch muscle."},
+    {id:"aa",n:"Ankle Alphabet",s:2,r:"Full alphabet each foot",effort:1,effLbl:"Activation",muscles:"Ankle joint mobility",
+     benefit:"Hits every possible range of motion — inversion, eversion, dorsiflexion, plantarflexion, and every diagonal. Better ankle mobility = better board control in every direction.",
+     setup:"Sit on bench, one foot off ground. Ankle completely relaxed.",
+     howto:"Write every letter of the alphabet in the air with your big toe. Capital letters. Big range of motion. Go slow. Really write them — curves like S and O should maximize the arc. Switch feet.",
+     c:"Big letters. Full range on every curve. Both feet."},
+    {id:"ae",n:"Ankle Eversion Band",s:3,r:"15 each",effort:2,effLbl:"Light",muscles:"Peroneals, lateral ankle stabilizers",
+     benefit:"Ankle sprains happen from inversion — rolling inward. The peroneals resist that. Almost never trained. This directly prevents the most common skating injury.",
+     setup:"Sit on floor. Band around ball of right foot anchored on your LEFT side so it pulls inward.",
+     howto:"With band pulling foot inward, push outward (eversion) against it for 15 reps. Controlled both ways. Small range of motion — foot turning outward against resistance.",
+     c:"Foot turns OUTWARD against resistance. Sprain prevention."},
+    {id:"adw",n:"Ankle Dorsiflexion Wall",s:3,r:"10 each",effort:1,effLbl:"Activation",muscles:"Ankle dorsiflexion range",
+     benefit:"Directly limits ollie height. If ankle can't dorsiflex, your crouch is limited. More dorsiflexion = deeper crouch = more pop. This is probably your biggest skating limitation.",
+     setup:"Facing wall. Toes of one foot against wall. Heel on floor.",
+     howto:"Drive knee forward until it touches wall. If it touches easily, move foot back. Find where knee BARELY touches with heel flat. Track this distance week to week — you'll see it improve.",
+     c:"Find your limit. Push it slightly each set. This is your ollie ceiling."},
+   ]},
+  {id:"core",name:"Skate Core",emoji:"🔥",sub:"Stability, rotation, anti-sway on the board",color:"#ff4488",
+   ex:[
+    {id:"db",n:"Dead Bug",s:3,r:"10 each side",effort:2,effLbl:"Light",muscles:"Deep core, transverse abdominis",
+     benefit:"Anti-extension core stability. When you're on your board being pulled different directions, your core has to stay centered and rigid. Dead bug trains exactly that.",
+     setup:"On back. Arms straight up. Knees at 90°. Lower back PRESSED FLAT — stays flat the entire set.",
+     howto:"Lower RIGHT arm overhead and LEFT leg toward floor simultaneously. Both stay off floor. Return. Switch. If lower back lifts off floor at all — reduce range. Back flat is the exercise.",
+     c:"Lower back MUST stay flat. Non-negotiable."},
+    {id:"ph",n:"Pallof Hold",s:3,r:"20 sec each side",effort:2,effLbl:"Light",muscles:"Obliques, core anti-rotation",
+     benefit:"Grinding a rail or doing a manual, rotational forces try to twist you off. Pallof Hold trains your core to RESIST that rotation. Direct carry-over to rail stability.",
+     setup:"Cable or band at hip height. Stand sideways to anchor. Both hands hold at chest.",
+     howto:"Press hands straight out in front. Hold 20 seconds while cable tries to rotate you toward anchor. Resist completely — no rotation, no leaning. Return to chest. Switch sides.",
+     c:"Resist the rotation. Stay perfectly square."},
+    {id:"hc",n:"Hip Circles",s:2,r:"10 each direction",effort:1,effLbl:"Activation",muscles:"Hip flexors, hip rotators",
+     benefit:"Hip mobility directly affects trick mechanics. Rotation in kickflips, hip snap in heelflips, hip drive in ollies — all require mobile hips. Tight hips is the most common mechanical limiter in skaters.",
+     setup:"Feet shoulder-width. Hands on hips. Slight knee bend.",
+     howto:"Rotate hips in the biggest possible circles. Keep upper body relatively still. After 10, reverse. Spend 30 seconds on it and you'll feel how tight your hip rotators actually are.",
+     c:"As big as possible. Upper body stays still."},
+    {id:"ec",n:"Explosive Trunk Rotation",s:3,r:"10 each side",effort:3,effLbl:"Moderate",muscles:"Obliques, rotational power",
+     benefit:"The rotation in kickflips, varial kickflips, and hardflips comes from here. Most skaters try to spin the trick with their foot — pros initiate rotation from the core. Train the engine.",
+     setup:"Slight squat position. Feet shoulder-width. Arms at chest, fists together.",
+     howto:"Rotate trunk explosively to one side — like swinging a baseball bat but stopping controlled. Keep hips pointed FORWARD — rotation is from torso up only. Return to center, other side. Speed is the point — explosive.",
+     c:"HIPS STAY FORWARD. Only trunk rotates. Explosive."},
+    {id:"lhr",n:"Lying Hip Raise",s:3,r:"12",effort:2,effLbl:"Light",muscles:"Glutes, hamstrings, posterior chain",
+     benefit:"Glute strength for skating push power and pelvic stability. Connects directly to pelvic floor health — same muscles.",
+     setup:"On back. Feet flat, hip-width. Knees at 90°. Arms flat on floor.",
+     howto:"Drive hips up by squeezing glutes. Straight line shoulder to knee. Hard squeeze at top — hold 1 sec. Lower until hips almost touch floor. If you feel it in lower back, it's glutes not working hard enough.",
+     c:"Straight line at top. GLUTES drive. 1 sec squeeze."},
+    {id:"cp",n:"Copenhagen Plank",s:3,r:"20 sec each side",effort:3,effLbl:"Moderate",muscles:"Hip adductors, core, lateral stability",
+     benefit:"Hip adductors work massively in grinds, rails, and anything where legs want to drift apart. Most skaters are weak here. Brutal but highly effective.",
+     setup:"Lie on side. Prop on forearm. Top foot on bench at about knee height. Bottom leg hangs free.",
+     howto:"Drive top hip up by pushing through top foot. Body forms straight line. Hold 20 seconds. Inner thigh of top leg should burn. Switch sides. If you can't hold 20, start at 10.",
+     c:"Top foot drives up. Straight line. Inner thigh works."},
+   ]},
+];
+
+function SkateTraining(){
+  const [screen,setScreen]=useState("home");
+  const [sessionId,setSessionId]=useState(null);
+  const [exIdx,setExIdx]=useState(0);
+  const [setNum,setSetNum]=useState(1);
+  const [expanded,setExpanded]=useState(null);
+  const [done,setDone]=useState(null);
+  const [report,setReport]=useState("");
+  const [showRep,setShowRep]=useState(false);
+  const [copied,setCopied]=useState(false);
+  const [sessionStart,setSessionStart]=useState(null);
+
+  const sess=SESSIONS.find(s=>s.id===sessionId);
+  const ex=sess?.ex[exIdx];
+  const totalSets=ex?.s||1;
+
+  function startSession(id){
+    setSessionId(id);setExIdx(0);setSetNum(1);setExpanded(null);
+    setSessionStart(Date.now());
+    setScreen("session");
+    if(navigator.vibrate)navigator.vibrate([50]);
+  }
+
+  async function nextSet(){
+    if(navigator.vibrate)navigator.vibrate([60]);
+    await ping(ex.n+" set "+setNum,sess.name+" in progress","skateboard");
+    if(setNum<totalSets){
+      setSetNum(n=>n+1);
+    }else if(exIdx<sess.ex.length-1){
+      setExIdx(i=>i+1);setSetNum(1);setExpanded(null);
+      if(navigator.vibrate)navigator.vibrate([80,40,80]);
+    }else{
+      finishSession();
+    }
+  }
+
+  async function finishSession(){
+    const elapsed=Math.round((Date.now()-sessionStart)/1000);
+    const s={date:dateStr(),type:"skate-training",session:sess.name,duration:elapsed,exercises:sess.ex.length};
+    setDone(s);
+    try{
+      let log=[];
+      try{const x=await storage.get("tarjm:all");if(x)log=JSON.parse(x.value);}catch{}
+      log.unshift({appType:"skate-training",...s});
+      await storage.set("tarjm:all",JSON.stringify(log.slice(0,50)));
+    }catch{}
+    await ping("🛹 Skate Training Done",sess.name+" complete — "+sess.ex.length+" exercises","skateboard");
+    if(navigator.vibrate)navigator.vibrate([100,50,100,50,300]);
+    setScreen("done");
+  }
+
+  async function loadReport(){
+    try{
+      const r=await storage.get("tarjm:all");
+      if(!r){setReport("No sessions yet.");return;}
+      const log=JSON.parse(r.value).filter(s=>s.appType==="skate-training");
+      if(!log.length){setReport("No skate training sessions yet.");return;}
+      setReport(["=== SKATE TRAINING LOG FOR TARJM ===",
+        ...log.slice(0,10).map(s=>`\n📅 ${s.date} — ${s.session} (${Math.round(s.duration/60)} min, ${s.exercises} exercises)`)
+      ].join("\n"));
+    }catch(e){setReport("Error: "+e.message);}
+  }
+
+  const dot=(n)=>Array.from({length:5},(_,i)=>
+    React.createElement('span',{key:i,style:{display:"inline-block",width:7,height:7,borderRadius:"50%",background:i<n?EFFORT_COLORS[n]:BD,marginRight:2,verticalAlign:"middle"}})
+  );
+
+  const btn=(txt,onClick,style={})=>React.createElement('button',{onClick,style:{cursor:"pointer",fontFamily:"Syne",border:"none",...style}},txt);
+  const progress=sess?((exIdx*totalSets+(setNum-1))/(sess.ex.length*totalSets)):0;
+
+  // HOME
+  if(screen==="home") return React.createElement('div',{style:{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne"}},
+    React.createElement('div',{style:{padding:"40px 24px 20px",borderBottom:`1px solid ${BD}`}},
+      React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,letterSpacing:3,color:G,display:"block",marginBottom:8}},"AT HOME"),
+      React.createElement('div',{style:{fontSize:34,fontWeight:800,lineHeight:1.1}},"Skate",React.createElement('br'),React.createElement('span',{style:{color:A}},"Training")),
+      React.createElement('div',{style:{fontSize:13,color:M,marginTop:8,lineHeight:1.5}},"Exercises that directly improve your skating. Not warmup — actual training.")),
+    React.createElement('div',{style:{flex:1,padding:16,overflowY:"auto",display:"flex",flexDirection:"column",gap:10}},
+      ...SESSIONS.map(s=>btn(
+        React.createElement('div',{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",width:"100%",gap:12}},
+          React.createElement('div',{style:{flex:1}},
+            React.createElement('div',{style:{fontSize:22,fontWeight:800,marginBottom:4}},`${s.emoji} ${s.name}`),
+            React.createElement('div',{style:{fontFamily:"Space Mono",fontSize:11,color:s.color,marginBottom:6}},`${s.ex.length} exercises`),
+            React.createElement('div',{style:{fontSize:12,color:M,lineHeight:1.4}},s.sub)),
+          React.createElement('span',{style:{fontSize:20,color:s.color,flexShrink:0,marginTop:2}},"→")),
+        ()=>startSession(s.id),{display:"flex",justifyContent:"space-between",padding:"18px 20px",background:S,border:`1px solid ${BD}`,borderRadius:14,color:T,textAlign:"left",width:"100%"})),
+      btn(
+        React.createElement('div',{style:{display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%"}},
+          React.createElement('div',{style:{fontSize:14,fontWeight:700}},"🤖 Tarjm Report"),
+          React.createElement('div',{style:{fontFamily:"Space Mono",fontSize:10,color:G}},"sessions log →")),
+        async()=>{await loadReport();setShowRep(true);},
+        {display:"flex",padding:"18px 20px",background:S,border:`1px dashed ${BD}`,borderRadius:14,color:T,textAlign:"left",width:"100%"})),
+    showRep&&React.createElement('div',{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",display:"flex",alignItems:"flex-end",padding:20,zIndex:100}},
+      React.createElement('div',{style:{background:S,border:`1px solid ${BD}`,borderRadius:20,padding:24,width:"100%",maxHeight:"70vh",display:"flex",flexDirection:"column"}},
+        React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:A,letterSpacing:2,display:"block",marginBottom:12}},"TARJM SKATE TRAINING REPORT"),
+        React.createElement('pre',{style:{fontSize:11,color:M,whiteSpace:"pre-wrap",flex:1,overflowY:"auto",marginBottom:16,fontFamily:"Space Mono"}},report),
+        React.createElement('div',{style:{display:"flex",gap:8}},
+          btn(copied?"COPIED ✓":"COPY FOR TARJM",()=>{navigator.clipboard?.writeText(report);setCopied(true);setTimeout(()=>setCopied(false),2000);},{flex:1,background:A,color:"#000",borderRadius:12,padding:14,fontWeight:800,fontSize:14}),
+          btn("CLOSE",()=>setShowRep(false),{flex:0.5,background:"none",color:M,border:`1px solid ${BD}`,borderRadius:12,padding:14,fontWeight:700,fontSize:13}))))
+  );
+
+  // SESSION
+  if(screen==="session"&&ex) return React.createElement('div',{style:{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne"}},
+    React.createElement('div',{style:{padding:"48px 24px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+      btn("QUIT",()=>setScreen("home"),{fontFamily:"Space Mono",fontSize:10,color:G,background:"none",border:`1px solid ${BD}`,borderRadius:8,padding:"8px 14px",letterSpacing:1}),
+      React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,letterSpacing:1,color:G}},`${exIdx+1}/${sess.ex.length} · SET ${setNum}/${totalSets}`)),
+    React.createElement('div',{style:{padding:"0 24px",marginBottom:16}},
+      React.createElement('div',{style:{height:2,background:BD,borderRadius:2}},
+        React.createElement('div',{style:{height:"100%",width:`${progress*100}%`,background:A,borderRadius:2,transition:"width 0.4s"}})),
+      React.createElement('div',{style:{display:"flex",justifyContent:"space-between",marginTop:6}},
+        React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:G}},`${sess.emoji} ${sess.name.toUpperCase()}`),
+        React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:G}},ex.r+" REPS"))),
+    React.createElement('div',{style:{flex:1,overflowY:"auto",padding:"0 20px 20px"}},
+      React.createElement('div',{style:{background:S,border:`1px solid ${BD}`,borderRadius:16,padding:20,marginBottom:12}},
+        React.createElement('div',{style:{fontSize:22,fontWeight:800,marginBottom:8}},ex.n),
+        React.createElement('div',{style:{display:"flex",alignItems:"center",gap:12,marginBottom:8,flexWrap:"wrap"}},
+          React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:13,color:A}},`${ex.s} sets × ${ex.r}`),
+          React.createElement('span',{style:{display:"flex",alignItems:"center",gap:5}},...dot(ex.effort),
+            React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:EFFORT_COLORS[ex.effort],letterSpacing:1}},ex.effLbl.toUpperCase()))),
+        React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:G,display:"block",marginBottom:6}},ex.muscles),
+        React.createElement('div',{style:{fontSize:13,color:M,lineHeight:1.5}},ex.c)),
+      React.createElement('div',{style:{background:"rgba(200,255,0,0.05)",border:"1px solid rgba(200,255,0,0.15)",borderRadius:14,padding:16,marginBottom:12}},
+        React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:A,letterSpacing:2,display:"block",marginBottom:8}},"WHY THIS HELPS YOUR SKATING"),
+        React.createElement('div',{style:{fontSize:13,color:T,lineHeight:1.6}},ex.benefit)),
+      btn(
+        React.createElement('div',{style:{display:"flex",justifyContent:"space-between",width:"100%"}},
+          React.createElement('span',null,"HOW TO DO IT"),React.createElement('span',null,expanded===ex.id?"↑":"↓")),
+        ()=>setExpanded(expanded===ex.id?null:ex.id),
+        {width:"100%",background:S,border:`1px solid ${expanded===ex.id?A:BD}`,borderRadius:12,padding:"12px 16px",fontFamily:"Space Mono",fontSize:10,color:expanded===ex.id?A:G,letterSpacing:2,marginBottom:8,textAlign:"left",display:"flex",justifyContent:"space-between"}),
+      expanded===ex.id&&React.createElement('div',{style:{marginBottom:12}},
+        React.createElement('div',{style:{background:S,border:`1px solid ${BD}`,borderRadius:14,padding:18,marginBottom:8}},
+          React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:G,letterSpacing:2,display:"block",marginBottom:10}},"SET UP"),
+          React.createElement('div',{style:{fontSize:13,color:T,lineHeight:1.7}},ex.setup)),
+        React.createElement('div',{style:{background:S,border:`1px solid #2a2a00`,borderRadius:14,padding:18}},
+          React.createElement('span',{style:{fontFamily:"Space Mono",fontSize:10,color:A,letterSpacing:2,display:"block",marginBottom:10}},"EXECUTION"),
+          React.createElement('div',{style:{fontSize:13,color:T,lineHeight:1.7}},ex.howto))),
+      React.createElement('div',{style:{background:S,border:`1px solid ${BD}`,borderRadius:14,padding:20,textAlign:"center"}},
+        React.createElement('div',{style:{display:"flex",justifyContent:"center",gap:12,marginBottom:16}},
+          ...Array.from({length:totalSets},(_,i)=>React.createElement('div',{key:i,style:{width:40,height:40,borderRadius:"50%",border:`2px solid ${i<setNum-1?A:i===setNum-1?"#fff":BD}`,background:i<setNum-1?"rgba(200,255,0,0.15)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Space Mono",fontSize:13,color:i<setNum-1?A:i===setNum-1?T:G}},i<setNum-1?"✓":i+1))),
+        React.createElement('div',{style:{fontFamily:"Space Mono",fontSize:11,color:G,letterSpacing:2}},`SET ${setNum} OF ${totalSets} — ${ex.r} REPS`))),
+    React.createElement('div',{style:{padding:"12px 20px 40px"}},
+      btn(setNum<totalSets?"SET DONE →":exIdx<sess.ex.length-1?"EXERCISE DONE →":"FINISH SESSION ✓",nextSet,{width:"100%",background:A,color:"#000",borderRadius:14,padding:20,fontWeight:800,fontSize:16}))
+  );
+
+  // DONE
+  if(screen==="done"&&done) return React.createElement('div',{style:{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne",alignItems:"center",justifyContent:"center",padding:"40px 32px",textAlign:"center"}},
+    React.createElement('div',{style:{fontSize:80,marginBottom:24}},"🛹"),
+    React.createElement('div',{style:{fontSize:40,fontWeight:800,color:A,marginBottom:8}},"TRAINED."),
+    React.createElement('div',{style:{fontSize:15,color:M,marginBottom:12,lineHeight:1.6}},done.session),
+    React.createElement('div',{style:{fontSize:13,color:G,marginBottom:40}},done.date),
+    React.createElement('div',{style:{display:"flex",gap:32,marginBottom:48,justifyContent:"center"}},
+      React.createElement('div',null,React.createElement('div',{style:{fontFamily:"Space Mono",fontSize:36,color:T}},Math.round(done.duration/60)),React.createElement('div',{style:{fontSize:11,color:G,letterSpacing:1}},"MINUTES")),
+      React.createElement('div',null,React.createElement('div',{style:{fontFamily:"Space Mono",fontSize:36,color:T}},done.exercises),React.createElement('div',{style:{fontSize:11,color:G,letterSpacing:1}},"EXERCISES"))),
+    React.createElement('div',{style:{fontFamily:"Space Mono",fontSize:11,color:G,marginBottom:24}},"Saved to Tarjm ✓"),
+    btn("BACK TO HOME",()=>setScreen("home"),{width:"100%",maxWidth:320,background:A,color:"#000",borderRadius:16,padding:20,fontWeight:800,fontSize:17})
+  );
+
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(SkateTraining));
+</script>
+</body>
+</html>

@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sessions">
+<title>Session Logger</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{background:#0a0a0a;}
+::-webkit-scrollbar{display:none;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+@keyframes pop{0%{transform:scale(0.8);opacity:0}100%{transform:scale(1);opacity:1}}
+</style>
+</head>
+<body><div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const NTFY="elijah-tarjm-x7k2m9";
+const BG="#0a0a0a",S="#111",BD="#1a1a1a",T="#f0f0f0",M="#666",G="#444",A="#c8ff00";
+
+const SESSION_TYPES=[
+  {id:"skate",    name:"Skate",     icon:"🛹",color:"#c8ff00"},
+  {id:"gym",      name:"Gym",       icon:"🏋️",color:"#ffaa00"},
+  {id:"skate_gym",name:"Skate+Gym", icon:"⚡",color:"#ff6644"},
+  {id:"stretch",  name:"Stretch",   icon:"🧘",color:"#44ff88"},
+  {id:"other",    name:"Other",     icon:"🏃",color:"#888"},
+];
+
+const SPOTS=["Forest Park","LA Fitness","Front yard","Back yard","Kroger spot","Downtown","Other"];
+const TRICKS_SHORT=["Kickflip","Heelflip","BS 180","FS 180","Varial KF","50-50","Manual","Pop Shove","Fakie 360 Shove","Backside Board","Nosegrind","Frontside 180"];
+const ENERGY=[1,2,3,4,5];
+const ENERGY_LABELS=["💀","😴","😐","⚡","🔥"];
+
+const ld=(k)=>{try{return JSON.parse(localStorage.getItem(k));}catch{return null;}};
+const sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
+
+function fmtDur(ms){
+  if(ms<=0)return"0m 00s";
+  const s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);
+  if(h>0)return h+"h "+String(m%60).padStart(2,"0")+"m";
+  return m+"m "+String(s%60).padStart(2,"0")+"s";
+}
+function fmtShort(ms){
+  if(!ms||ms<=0)return"—";
+  const m=Math.floor(ms/60000),h=Math.floor(m/60);
+  if(h>0)return h+"h "+(m%60>0?(m%60)+"m":"");
+  return m+"m";
+}
+
+async function ping(title,msg,tags){
+  try{
+    await fetch("https://ntfy.sh/"+NTFY,{
+      method:"POST",body:msg,
+      headers:{Title:title,Priority:"3",Tags:tags||"muscle"}
+    });
+  }catch{}
+}
+
+function App(){
+  // ── Restore active session on mount ──
+  const [active,setActive]=useState(()=>ld("active_session")||null);
+  const [elapsed,setElapsed]=useState(()=>{
+    const a=ld("active_session");
+    return a?Date.now()-a.startTs:0;
+  });
+  const [screen,setScreen]=useState(()=>ld("active_session")?"live":"home");
+  const [sessions,setSessions]=useState(()=>ld("sessions")||[]);
+
+  // Pre-session
+  const [type,setType]=useState("skate");
+  const [spot,setSpot]=useState("Forest Park");
+  const [customSpot,setCustomSpot]=useState("");
+  const [energy,setEnergy]=useState(3);
+  const [plan,setPlan]=useState("");
+
+  // Live session
+  const [workedOn,setWorkedOn]=useState([]);
+  const [vibe,setVibe]=useState(3);
+  const [notes,setNotes]=useState("");
+  const [showEndConfirm,setShowEndConfirm]=useState(false);
+
+  // Personal best
+  const [newPB,setNewPB]=useState(false);
+
+  // ── Timestamp-based timer — keeps running in background ──
+  useEffect(()=>{
+    if(!active)return;
+    // Immediately sync on mount or return from background
+    setElapsed(Date.now()-active.startTs);
+    const interval=setInterval(()=>{
+      setElapsed(Date.now()-active.startTs);
+    },1000);
+    const onVisible=()=>{
+      if(document.visibilityState==="visible"){
+        setElapsed(Date.now()-active.startTs);
+      }
+    };
+    document.addEventListener("visibilitychange",onVisible);
+    return()=>{
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange",onVisible);
+    };
+  },[active?.startTs]);
+
+  function startSession(){
+    const spotName=spot==="Other"?customSpot:spot;
+    const s={
+      startTs:Date.now(),
+      type,spot:spotName,
+      energy,plan,
+      id:Date.now()
+    };
+    setActive(s);
+    sv("active_session",s);
+    setElapsed(0);
+    setWorkedOn([]);
+    setVibe(3);
+    setNotes("");
+    setShowEndConfirm(false);
+    setScreen("live");
+    const t=SESSION_TYPES.find(x=>x.id===type);
+    ping(
+      t.icon+" Session Started",
+      t.name+" at "+spotName+" — energy "+ENERGY_LABELS[energy-1]+(plan?" — "+plan:""),
+      "muscle"
+    );
+  }
+
+  async function confirmEnd(){
+    const dur=Date.now()-active.startTs;
+    const t=SESSION_TYPES.find(x=>x.id===active.type)||SESSION_TYPES[0];
+
+    // Check personal best for this session type
+    const prevBest=sessions
+      .filter(s=>s.type===active.type)
+      .reduce((best,s)=>s.duration>best?s.duration:best,0);
+    const isPB=dur>prevBest&&prevBest>0;
+    setNewPB(isPB);
+
+    const sess={
+      ...active,
+      endTs:Date.now(),
+      duration:dur,
+      workedOn:[...workedOn],
+      vibe,
+      notes
+    };
+    const updated=[sess,...sessions];
+    setSessions(updated);
+    sv("sessions",updated);
+    setActive(null);
+    sv("active_session",null);
+    setShowEndConfirm(false);
+    setScreen("post");
+
+    // Ping Tarjm with full summary
+    await ping(
+      t.icon+" Session Complete"+(isPB?" 🏆 NEW PB":""),
+      fmtShort(dur)+" "+t.name+" at "+active.spot+
+      (workedOn.length?" — "+workedOn.join(", "):"")+(notes?" — "+notes:""),
+      "muscle"
+    );
+
+    // Also send structured data for Tarjm PC
+    await ping("SESSION_DATA",JSON.stringify({
+      type:active.type,
+      spot:active.spot,
+      duration:dur,
+      energy:active.energy,
+      vibe,
+      workedOn,
+      notes,
+      isPB,
+      date:new Date().toISOString().slice(0,10),
+      timestamp:Date.now()
+    }),"data");
+  }
+
+  const totalWeek=()=>{
+    const cut=Date.now()-7*864e5;
+    return sessions.filter(s=>s.startTs>cut).reduce((a,s)=>a+(s.duration||0),0);
+  };
+  const totalMonth=()=>{
+    const now=new Date();
+    const start=new Date(now.getFullYear(),now.getMonth(),1).getTime();
+    return sessions.filter(s=>s.startTs>start).reduce((a,s)=>a+(s.duration||0),0);
+  };
+  const longestEver=sessions.length?Math.max(...sessions.map(s=>s.duration||0)):0;
+
+  const mono=(ex={})=>({fontFamily:"Space Mono",fontSize:10,letterSpacing:2,color:G,...ex});
+  const row=(ex={})=>({display:"flex",alignItems:"center",...ex});
+  const t_active=active?SESSION_TYPES.find(x=>x.id===active.type)||SESSION_TYPES[0]:null;
+
+  // ── POST SCREEN ──
+  if(screen==="post"){
+    const lastSess=sessions[0];
+    const t=lastSess?SESSION_TYPES.find(x=>x.id===lastSess.type)||SESSION_TYPES[0]:SESSION_TYPES[0];
+    return(
+      <div style={{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne,sans-serif",maxWidth:480,margin:"0 auto",alignItems:"center",justifyContent:"center",padding:"40px 24px",textAlign:"center"}}>
+        {newPB&&(
+          <div style={{fontFamily:"Space Mono",fontSize:11,color:"#ffaa00",letterSpacing:2,marginBottom:12,animation:"pop 0.4s ease"}}>
+            🏆 NEW PERSONAL BEST
+          </div>
+        )}
+        <div style={{fontSize:64,marginBottom:16,animation:"pop 0.3s ease"}}>{t.icon}</div>
+        <div style={{fontSize:36,fontWeight:800,color:A,marginBottom:8}}>DONE.</div>
+        <div style={{fontFamily:"Space Mono",fontSize:28,color:T,marginBottom:4}}>{fmtShort(lastSess?.duration||0)}</div>
+        <div style={mono({color:t.color,marginBottom:32})}>{t.name.toUpperCase()} · {lastSess?.spot}</div>
+
+        {/* Stats */}
+        <div style={{display:"flex",gap:24,marginBottom:32}}>
+          {[[Math.round((lastSess?.duration||0)/60000),"⏱️","Minutes"],[workedOn.length,"🛹","Tricks"],[vibe,"🔥","Vibe"]].map(([v,icon,l])=>(
+            <div key={l} style={{textAlign:"center"}}>
+              <div style={{fontSize:20,marginBottom:4}}>{icon}</div>
+              <div style={{fontFamily:"Space Mono",fontSize:22,fontWeight:700,color:T}}>{v}</div>
+              <div style={mono({fontSize:8})}>{l.toUpperCase()}</div>
+            </div>
+          ))}
+        </div>
+
+        {workedOn.length>0&&(
+          <div style={{background:S,border:"1px solid "+BD,borderRadius:12,padding:"12px 20px",marginBottom:24,width:"100%"}}>
+            <div style={mono({display:"block",marginBottom:8})}>TRICKS WORKED ON</div>
+            <div style={{fontSize:13,color:T}}>{workedOn.join(" · ")}</div>
+          </div>
+        )}
+
+        {notes&&(
+          <div style={{background:S,border:"1px solid "+BD,borderRadius:12,padding:"12px 20px",marginBottom:24,width:"100%"}}>
+            <div style={{fontSize:13,color:M,fontStyle:"italic"}}>"{notes}"</div>
+          </div>
+        )}
+
+        <div style={mono({color:G,marginBottom:24})}>SENT TO TARJM ✓</div>
+
+        <button onClick={()=>{setScreen("home");setNewPB(false);setWorkedOn([]);setNotes("");setVibe(3);}}
+          style={{width:"100%",background:A,color:"#000",border:"none",borderRadius:14,padding:20,fontFamily:"Syne",fontWeight:800,fontSize:16,cursor:"pointer"}}>
+          BACK TO HOME
+        </button>
+      </div>
+    );
+  }
+
+  // ── LIVE SCREEN ──
+  if(screen==="live"&&active){
+    return(
+      <div style={{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne,sans-serif",maxWidth:480,margin:"0 auto"}}>
+
+        {/* End confirm overlay */}
+        {showEndConfirm&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",display:"flex",alignItems:"flex-end",padding:20,zIndex:100}}>
+            <div style={{background:"#161616",border:"1px solid #ff4444",borderRadius:20,padding:28,width:"100%"}}>
+              <div style={{fontSize:20,fontWeight:800,marginBottom:8}}>End session?</div>
+              <div style={{fontSize:14,color:M,marginBottom:24}}>{fmtDur(elapsed)} · {t_active?.name} · {active.spot}</div>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setShowEndConfirm(false)}
+                  style={{flex:1,background:"none",color:T,border:"1px solid "+BD,borderRadius:12,padding:16,fontFamily:"Syne",fontWeight:700,fontSize:14,cursor:"pointer"}}>
+                  KEEP GOING
+                </button>
+                <button onClick={confirmEnd}
+                  style={{flex:1,background:"#ff4444",color:"#fff",border:"none",borderRadius:12,padding:16,fontFamily:"Syne",fontWeight:800,fontSize:14,cursor:"pointer"}}>
+                  END IT
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Header */}
+        <div style={{padding:"44px 24px 8px"}}>
+          <div style={{...row({justifyContent:"space-between"}),marginBottom:8}}>
+            <div style={mono({color:t_active?.color,animation:"pulse 2s infinite"})}>● LIVE SESSION</div>
+            <div style={mono({color:G})}>{t_active?.icon} {t_active?.name} · {active.spot}</div>
+          </div>
+        </div>
+
+        {/* Big timer — always visible, always accurate */}
+        <div style={{textAlign:"center",padding:"12px 0 20px",borderBottom:"1px solid "+BD}}>
+          <div style={{fontFamily:"Space Mono",fontSize:68,fontWeight:700,color:T,lineHeight:1,letterSpacing:-2}}>
+            {fmtDur(elapsed)}
+          </div>
+          <div style={mono({display:"block",marginTop:8})}>{ENERGY_LABELS[active.energy-1]} ENERGY {active.energy}/5{active.plan?" — "+active.plan:""}</div>
+        </div>
+
+        <div style={{flex:1,overflowY:"auto",padding:"16px 20px 0"}}>
+
+          {/* Tricks worked on */}
+          <div style={{marginBottom:20}}>
+            <div style={{...row({justifyContent:"space-between"}),marginBottom:12}}>
+              <div style={mono()}>TRICKS WORKED ON</div>
+              {workedOn.length>0&&<div style={mono({color:A})}>{workedOn.length} selected</div>}
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+              {TRICKS_SHORT.map(tr=>(
+                <button key={tr} onClick={async()=>{const _add=!workedOn.includes(tr);setWorkedOn(w=>w.includes(tr)?w.filter(x=>x!==tr):[...w,tr]);if(_add)await ping("🛹 "+tr,"Session in progress","skateboard");}}
+                  style={{padding:"8px 14px",borderRadius:8,cursor:"pointer",fontFamily:"Syne",fontSize:12,
+                    fontWeight:workedOn.includes(tr)?700:400,
+                    border:"1px solid "+(workedOn.includes(tr)?A:BD),
+                    background:workedOn.includes(tr)?A+"18":"transparent",
+                    color:workedOn.includes(tr)?A:M}}>
+                  {tr}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Session vibe */}
+          <div style={{marginBottom:20}}>
+            <div style={mono({display:"block",marginBottom:12})}>SESSION VIBE</div>
+            <div style={row({gap:8})}>
+              {ENERGY.map(v=>(
+                <button key={v} onClick={()=>setVibe(v)}
+                  style={{flex:1,fontSize:24,padding:"10px 0",cursor:"pointer",
+                    border:"1px solid "+(vibe===v?"#555":BD),
+                    background:vibe===v?"rgba(255,255,255,0.07)":"transparent",
+                    borderRadius:10}}>
+                  {ENERGY_LABELS[v-1]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div style={{marginBottom:24}}>
+            <div style={mono({display:"block",marginBottom:8})}>NOTES</div>
+            <textarea value={notes} onChange={e=>setNotes(e.target.value)}
+              placeholder="Anything worth remembering..."
+              style={{width:"100%",background:S,border:"1px solid "+BD,borderRadius:10,padding:"12px",color:T,fontFamily:"Syne",fontSize:13,outline:"none",resize:"none",minHeight:70}}/>
+          </div>
+        </div>
+
+        {/* End session — requires confirmation so you can't accidentally end */}
+        <div style={{padding:"12px 20px 40px"}}>
+          <button onClick={()=>setShowEndConfirm(true)}
+            style={{width:"100%",background:"#1a0000",color:"#ff4444",border:"2px solid #ff4444",borderRadius:14,padding:20,fontFamily:"Syne",fontWeight:800,fontSize:16,cursor:"pointer",letterSpacing:1}}>
+            END SESSION
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── HISTORY SCREEN ──
+  if(screen==="history"){
+    return(
+      <div style={{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne,sans-serif",maxWidth:480,margin:"0 auto"}}>
+        <div style={{padding:"44px 24px 20px",...row({gap:16})}}>
+          <button onClick={()=>setScreen("home")}
+            style={mono({background:"none",border:"1px solid "+BD,borderRadius:8,padding:"8px 14px",cursor:"pointer"})}>
+            ← BACK
+          </button>
+          <div>
+            <div style={mono({display:"block",marginBottom:4})}>ALL SESSIONS</div>
+            <div style={{fontSize:20,fontWeight:800}}>History</div>
+          </div>
+        </div>
+
+        {/* Stats bar */}
+        <div style={{...row({gap:8}),padding:"0 20px 16px"}}>
+          {[
+            [fmtShort(totalWeek()),"📅","This week"],
+            [fmtShort(totalMonth()),"📆","This month"],
+            [sessions.length,"🔢","Total sessions"],
+            [fmtShort(longestEver),"🏆","Best ever"]
+          ].map(([v,icon,l])=>(
+            <div key={l} style={{flex:1,background:S,border:"1px solid "+BD,borderRadius:12,padding:"10px 4px",textAlign:"center"}}>
+              <div style={{fontSize:14,marginBottom:3}}>{icon}</div>
+              <div style={{fontFamily:"Space Mono",fontSize:12,fontWeight:700,color:T}}>{v}</div>
+              <div style={mono({fontSize:7,marginTop:2})}>{l.toUpperCase()}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{flex:1,overflowY:"auto",padding:"0 20px 32px"}}>
+          {sessions.length===0&&(
+            <div style={{textAlign:"center",padding:40,color:G,fontFamily:"Space Mono",fontSize:11}}>
+              No sessions yet.
+            </div>
+          )}
+          {sessions.map((sess,i)=>{
+            const t=SESSION_TYPES.find(x=>x.id===sess.type)||SESSION_TYPES[0];
+            const d=new Date(sess.startTs);
+            const isPB=sess.duration===longestEver&&longestEver>0;
+            return(
+              <div key={sess.id||i} style={{background:S,border:"1px solid "+(isPB?"#ffaa00":BD),borderRadius:14,padding:16,marginBottom:10}}>
+                <div style={{...row({justifyContent:"space-between"}),marginBottom:8}}>
+                  <div style={row({gap:10})}>
+                    <span style={{fontSize:20}}>{t.icon}</span>
+                    <div>
+                      <div style={{fontSize:14,fontWeight:700}}>
+                        {t.name} {isPB&&<span style={{fontFamily:"Space Mono",fontSize:9,color:"#ffaa00"}}>🏆 PB</span>}
+                      </div>
+                      <div style={mono({color:t.color})}>
+                        {d.toLocaleDateString("en-US",{month:"short",day:"numeric"})} · {d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontFamily:"Space Mono",fontSize:16,fontWeight:700,color:A}}>{fmtShort(sess.duration)}</div>
+                    <div style={mono()}>{sess.spot}</div>
+                  </div>
+                </div>
+                {sess.workedOn&&sess.workedOn.length>0&&(
+                  <div style={{fontSize:12,color:M,marginBottom:4}}>{sess.workedOn.join(" · ")}</div>
+                )}
+                {sess.notes&&(
+                  <div style={{fontSize:12,color:G,fontStyle:"italic"}}>"{sess.notes}"</div>
+                )}
+                {sess.vibe&&(
+                  <div style={{fontSize:16,marginTop:6}}>{ENERGY_LABELS[sess.vibe-1]}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ── HOME ──
+  return(
+    <div style={{background:BG,color:T,minHeight:"100vh",display:"flex",flexDirection:"column",fontFamily:"Syne,sans-serif",maxWidth:480,margin:"0 auto"}}>
+
+      {/* Active session banner — if one is running */}
+      {active&&(
+        <div onClick={()=>setScreen("live")}
+          style={{background:"rgba(200,255,0,0.08)",border:"1px solid rgba(200,255,0,0.4)",borderRadius:14,margin:"52px 20px 0",padding:"14px 18px",cursor:"pointer"}}>
+          <div style={mono({color:A,animation:"pulse 2s infinite",display:"block",marginBottom:4})}>● SESSION RUNNING</div>
+          <div style={{...row({justifyContent:"space-between"})}}>
+            <div style={{fontSize:15,fontWeight:800}}>{t_active?.icon} {t_active?.name} · {active.spot}</div>
+            <div style={{fontFamily:"Space Mono",fontSize:18,fontWeight:700,color:A}}>{fmtDur(elapsed)}</div>
+          </div>
+          <div style={mono({marginTop:6,color:A})}>TAP TO RETURN →</div>
+        </div>
+      )}
+
+      <div style={{padding:active?"16px 24px 16px":"44px 24px 16px",...row({justifyContent:"space-between"})}}>
+        <div>
+          <div style={mono({display:"block",marginBottom:6})}>WASABI</div>
+          <div style={{fontSize:28,fontWeight:800,lineHeight:1}}>Session<br/><span style={{color:A}}>Logger</span></div>
+        </div>
+        <button onClick={()=>setScreen("history")}
+          style={mono({background:"none",border:"1px solid "+BD,borderRadius:8,padding:"8px 12px",cursor:"pointer",marginTop:4})}>
+          HISTORY →
+        </button>
+      </div>
+
+      {/* Stats */}
+      <div style={{...row({gap:8}),padding:"0 24px 20px"}}>
+        {[
+          [fmtShort(totalWeek()),"📅","Week"],
+          [fmtShort(totalMonth()),"📆","Month"],
+          [sessions.length>0?fmtShort(longestEver):"—","🏆","Best"]
+        ].map(([v,icon,l])=>(
+          <div key={l} style={{flex:1,background:S,border:"1px solid "+BD,borderRadius:12,padding:"12px 8px",textAlign:"center"}}>
+            <div style={{fontSize:16,marginBottom:3}}>{icon}</div>
+            <div style={{fontFamily:"Space Mono",fontSize:13,fontWeight:700,color:T}}>{v}</div>
+            <div style={mono({fontSize:8,marginTop:3})}>{l.toUpperCase()}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{flex:1,overflowY:"auto",padding:"0 20px 32px"}}>
+
+        {/* Session type */}
+        <div style={{marginBottom:20}}>
+          <div style={mono({display:"block",marginBottom:12})}>SESSION TYPE</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {SESSION_TYPES.map(st=>(
+              <button key={st.id} onClick={()=>setType(st.id)}
+                style={{padding:"10px 16px",borderRadius:10,cursor:"pointer",fontFamily:"Syne",fontSize:13,
+                  fontWeight:type===st.id?800:400,
+                  border:"1px solid "+(type===st.id?st.color:BD),
+                  background:type===st.id?st.color+"18":"transparent",
+                  color:type===st.id?st.color:M}}>
+                {st.icon} {st.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Spot */}
+        <div style={{marginBottom:20}}>
+          <div style={mono({display:"block",marginBottom:12})}>SPOT</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:spot==="Other"?10:0}}>
+            {SPOTS.map(sp=>(
+              <button key={sp} onClick={()=>setSpot(sp)}
+                style={{padding:"8px 14px",borderRadius:8,cursor:"pointer",fontFamily:"Syne",fontSize:12,
+                  fontWeight:spot===sp?700:400,
+                  border:"1px solid "+(spot===sp?A:BD),
+                  background:spot===sp?A+"18":"transparent",
+                  color:spot===sp?A:M}}>
+                {sp}
+              </button>
+            ))}
+          </div>
+          {spot==="Other"&&(
+            <input value={customSpot} onChange={e=>setCustomSpot(e.target.value)}
+              placeholder="Spot name..."
+              style={{width:"100%",background:S,border:"1px solid "+BD,borderRadius:10,padding:"12px",color:T,fontFamily:"Syne",fontSize:13,outline:"none"}}/>
+          )}
+        </div>
+
+        {/* Energy */}
+        <div style={{marginBottom:20}}>
+          <div style={mono({display:"block",marginBottom:12})}>ENERGY LEVEL</div>
+          <div style={row({gap:8})}>
+            {ENERGY.map(v=>(
+              <button key={v} onClick={()=>setEnergy(v)}
+                style={{flex:1,fontSize:24,padding:"10px 0",cursor:"pointer",
+                  border:"1px solid "+(energy===v?"#555":BD),
+                  background:energy===v?"rgba(255,255,255,0.07)":"transparent",
+                  borderRadius:10}}>
+                {ENERGY_LABELS[v-1]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Plan */}
+        <div style={{marginBottom:28}}>
+          <div style={mono({display:"block",marginBottom:8})}>PLAN / FOCUS</div>
+          <input value={plan} onChange={e=>setPlan(e.target.value)}
+            placeholder="What are you working on today?"
+            style={{width:"100%",background:S,border:"1px solid "+BD,borderRadius:10,padding:"13px",color:T,fontFamily:"Syne",fontSize:13,outline:"none"}}/>
+        </div>
+
+        <button onClick={startSession}
+          style={{width:"100%",background:A,color:"#000",border:"none",borderRadius:14,padding:22,fontFamily:"Syne",fontWeight:800,fontSize:18,cursor:"pointer",letterSpacing:1,marginBottom:20}}>
+          START SESSION →
+        </button>
+
+        {/* Recent sessions */}
+        {sessions.length>0&&(
+          <div>
+            <div style={mono({display:"block",marginBottom:12})}>RECENT</div>
+            {sessions.slice(0,5).map((sess,i)=>{
+              const t=SESSION_TYPES.find(x=>x.id===sess.type)||SESSION_TYPES[0];
+              const d=new Date(sess.startTs);
+              return(
+                <div key={i} style={{...row({gap:12}),padding:"11px 0",borderBottom:"1px solid "+BD}}>
+                  <span style={{fontSize:18}}>{t.icon}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:700}}>{t.name} · {sess.spot}</div>
+                    <div style={mono({fontSize:9,marginTop:2})}>
+                      {d.toLocaleDateString("en-US",{month:"short",day:"numeric"})}
+                      {sess.workedOn&&sess.workedOn.length>0&&" · "+sess.workedOn.slice(0,2).join(", ")}
+                    </div>
+                  </div>
+                  <div style={{fontFamily:"Space Mono",fontSize:13,color:A}}>{fmtShort(sess.duration)}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script></body></html>
